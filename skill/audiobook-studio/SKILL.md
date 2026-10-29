@@ -29,7 +29,7 @@ python -m studio ui --project projects/<nome>                    # assistente e 
 
 **Entrega no Drive é parte do trabalho.** Ao terminar, rode `publish` (rclone). O destino vem de `AUDIOBOOK_DRIVE_DEST` ou de
 `config.local.json` na raiz do repositório (`{"drive_dest": "remote:Pasta/Audiolivros"}`); cria uma pasta com o título do livro e
-confere o tamanho de cada arquivo depois do envio. Entregue o link ao usuário. Capítulos soltos só com `--with-chapters`.
+confere o tamanho de cada arquivo depois do envio. Informe o caminho da pasta no Drive. **Não crie link público** (`rclone link`) sem o usuário pedir. Capítulos soltos só com `--with-chapters`.
 
 Layout de projeto: `book.json`, `cover.jpg`, `voice/{ref.wav,ref.txt,peaks.json}`, `work/` (cache e progresso), `chapters/NN.m4a`, `audiobook/`.
 

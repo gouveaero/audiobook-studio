@@ -5,7 +5,7 @@
 O destino vem de --dest, da variável AUDIOBOOK_DRIVE_DEST ou de config.local.json ({"drive_dest": "remote:Pasta"}) na raiz do
 repositório. Dentro dele cria-se uma pasta com o título do livro. Pré-requisito: `rclone config` com um remote do Google Drive.
 """
-import argparse, json, os, re, subprocess, sys
+import argparse, json, os, subprocess, sys
 
 
 def main(argv=None):
@@ -32,9 +32,7 @@ def main(argv=None):
     if chk.returncode:
         sys.exit("Conferência falhou (arquivos faltando ou de tamanho diferente):\n" + chk.stderr[-600:])
     print("Enviado e conferido em", target)
-    link = subprocess.run(["rclone", "link", target], capture_output=True, text=True)
-    print("Link:", re.sub(r"\s+", "", link.stdout) if link.returncode == 0 else "(sem link: abra a pasta no Drive)")
-
+    print("Pasta no Drive:", target, "(sem link público: compartilhe só se quiser)")
 
 if __name__ == "__main__":
     main()
