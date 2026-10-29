@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audiobook Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=Oxanium:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+:root { --a: #35e6ff; --bg: #02070c; --tx: #d8f7ff; --dim: rgba(216,247,255,.55); --ok: #3dff7a; --bad: #ff6b6b; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: radial-gradient(ellipse at 50% 0%, #0b2733, var(--bg) 60%); color: var(--tx); font-family: "Oxanium", system-ui, sans-serif; min-height: 100vh; padding: 48px 20px 80px; }
+main { max-width: 760px; margin: 0 auto; }
+h1 { font-size: 40px; font-weight: 700; text-shadow: 0 0 24px var(--a); }
+.sub { color: var(--dim); margin: 6px 0 36px; font-size: 18px; }
+section { border: 1px solid color-mix(in srgb, var(--a) 35%, transparent); background: color-mix(in srgb, var(--a) 5%, transparent); border-radius: 14px; padding: 22px 24px; margin-bottom: 18px; }
+section.off { opacity: .45; pointer-events: none; }
+h2 { font-size: 20px; color: var(--a); margin-bottom: 4px; }
+p.h { color: var(--dim); font-size: 15px; margin-bottom: 14px; }
+button, label.btn { background: transparent; color: var(--a); border: 1.5px solid var(--a); border-radius: 10px; padding: 10px 18px; font: inherit; font-size: 16px; cursor: pointer; display: inline-block; }
+button:hover, label.btn:hover { background: color-mix(in srgb, var(--a) 18%, transparent); }
+button.go { background: var(--a); color: #00131a; font-weight: 700; padding: 14px 28px; font-size: 18px; }
+button.go:disabled { opacity: .35; cursor: not-allowed; }
+input[type=file] { display: none; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.res { margin-top: 14px; font-size: 15px; color: var(--ok); }
+.err { color: var(--bad); }
+textarea, input[type=text] { width: 100%; background: rgba(0,0,0,.35); color: var(--tx); border: 1px solid #ffffff30; border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 15px; }
+textarea { min-height: 84px; margin-top: 10px; }
+canvas { width: 100%; height: 70px; margin-top: 12px; }
+.opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; }
+.opt input { margin-top: 6px; accent-color: var(--a); }
+.opt small { display: block; color: var(--dim); }
+.read { font-style: italic; color: var(--dim); margin: 8px 0; font-size: 15px; line-height: 1.5; }
+.ai { font-size: 14px; color: var(--dim); border-left: 3px solid var(--a); padding: 6px 12px; margin-top: 26px; }
+.ai code { color: var(--a); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Audiobook Studio</h1>
+  <p class="sub">Seu livro, na sua voz. Três passos e a IA cuida do resto.</p>
+
+  <section id="s1">
+    <h2>1. O livro</h2>
+    <p class="h">Um arquivo .epub (sem proteção DRM). O sumário vira os capítulos; notas, bibliografia e índice ficam de fora.</p>
+    <label class="btn">Escolher o EPUB<input type="file" id="epub" accept=".epub"></label>
+    <div class="res" id="r1"></div>
+  </section>
+
+  <section id="s2" class="off">
+    <h2>2. A voz</h2>
+    <p class="h">Grave ou envie de 10 a 20 segundos de fala limpa, sem música. A IA recorta o melhor trecho e transcreve. Confira o texto: ele precisa estar exato.</p>
+    <div class="row">
+      <button id="rec">● Gravar agora</button>
+      <label class="btn">Enviar áudio<input type="file" id="aud" accept="audio/*,video/*"></label>
+    </div>
+    <p class="read" id="readtxt">Para gravar, leia em voz natural: "Olá, tudo bem? Hoje vou contar uma história. Ela começa há muito tempo, numa cidade cercada de montanhas, onde as pessoas se reuniam todas as tardes para ouvir."</p>
+    <div id="vbox" style="display:none">
+      <canvas id="wave"></canvas>
+      <audio id="player" controls style="width:100%;margin-top:8px"></audio>
+      <p class="h" style="margin-top:12px">Transcrição do trecho (corrija se a IA errou alguma palavra):</p>
+      <textarea id="vtxt"></textarea>
+      <button id="saveTxt" style="margin-top:8px">Salvar transcrição</button>
+    </div>
+    <div class="res" id="r2"></div>
+  </section>
+
+  <section id="s3" class="off">
+    <h2>3. Onde gerar</h2>
+    <div class="opt"><input type="radio" name="mode" value="cloud" id="m1" checked><label for="m1"><b>GPU na nuvem (Google Colab)</b>
+      <small>De 5 a 7 vezes mais rápido que a fala. Gasta unidades do seu plano do Colab; precisa do <code>colab</code> CLI logado.</small></label></div>
+    <div class="opt"><input type="radio" name="mode" value="local" id="m2"><label for="m2"><b>Neste computador</b>
+      <small>De graça, 100% local (GPU da Apple, NVIDIA ou CPU). Perto do tempo real: um livro de 20 horas leva cerca de 20 horas.</small></label></div>
+    <div class="row" style="margin-top:14px"><input type="text" id="vname" placeholder="Nome da voz (aparece nos metadados e no painel)" style="max-width:420px"></div>
+    <div class="row" style="margin-top:18px"><button class="go" id="go" disabled>Gerar o audiolivro</button></div>
+    <div class="res" id="r3"></div>
+  </section>
+
+  <div class="ai">Dica: tudo isso também funciona pelo Claude Code. Diga <code>/audiobook-studio faz o audiolivro de livro.epub com a minha voz em voz.m4a</code> e a IA executa cada passo; esta tela só mostra o que ela está fazendo.</div>
+</main>
+<script>
+const $ = (i) => document.getElementById(i);
+let hasBook = false, hasVoice = false;
+const gate = () => { $("s2").classList.toggle("off", !hasBook); $("s3").classList.toggle("off", !(hasBook && hasVoice)); $("go").disabled = !(hasBook && hasVoice); };
+async function post(path, body, headers = {}) { const r = await fetch(path, { method: "POST", body, headers }); const j = await r.json(); if (!r.ok) throw new Error(j.error || "erro"); return j; }
+
+$("epub").onchange = async (e) => {
+  const f = e.target.files[0]; if (!f) return; $("r1").className = "res"; $("r1").textContent = "Lendo o livro...";
+  try { const j = await post("/api/book", f); $("r1").textContent = `${j.title}, de ${j.author}. ${j.summary}.`; hasBook = true;
+    await post("/api/config", JSON.stringify({ livro: j.title, autor: j.author })); gate(); }
+  catch (er) { $("r1").className = "res err"; $("r1").textContent = er.message; }
+};
+
+async function sendVoice(blob) {
+  $("r2").className = "res"; $("r2").textContent = "Recortando e transcrevendo (alguns segundos)...";
+  try { const j = await post("/api/voice", blob); $("vtxt").value = j.text; $("vbox").style.display = "block";
+    $("player").src = "/voice/ref.wav?" + Date.now(); $("r2").textContent = "Pronto. Ouça o recorte e confira a transcrição."; hasVoice = true; gate(); drawPeaks(); }
+  catch (er) { $("r2").className = "res err"; $("r2").textContent = er.message; }
+}
+$("aud").onchange = (e) => e.target.files[0] && sendVoice(e.target.files[0]);
+let mr, chunks = [];
+$("rec").onclick = async () => {
+  if (mr && mr.state === "recording") { mr.stop(); return; }
+  try { const st = await navigator.mediaDevices.getUserMedia({ audio: true }); mr = new MediaRecorder(st); chunks = [];
+    mr.ondataavailable = (e) => chunks.push(e.data); mr.onstop = () => { st.getTracks().forEach(t => t.stop()); $("rec").textContent = "● Gravar agora"; sendVoice(new Blob(chunks, { type: mr.mimeType })); };
+    mr.start(); $("rec").textContent = "■ Parar"; setTimeout(() => mr.state === "recording" && mr.stop(), 30000); }
+  catch (er) { $("r2").className = "res err"; $("r2").textContent = "Sem acesso ao microfone: " + er.message; }
+};
+$("saveTxt").onclick = async () => { await post("/api/voice-text", JSON.stringify({ text: $("vtxt").value })); $("r2").textContent = "Transcrição salva."; };
+async function drawPeaks() {
+  const p = await (await fetch("/voice_peaks.json")).json(), c = $("wave"), x = c.getContext("2d"), r = c.getBoundingClientRect();
+  c.width = r.width * 2; c.height = r.height * 2; x.fillStyle = "#35e6ff";
+  p.forEach((v, i) => { const w = c.width / p.length, h = Math.max(4, v / .6 * c.height); x.fillRect(i * w + 1, (c.height - h) / 2, w - 2, h); });
+}
+$("go").onclick = async () => {
+  const mode = document.querySelector("input[name=mode]:checked").value;
+  try { await post("/api/config", JSON.stringify({ voz: $("vname").value || "minha voz" })); await post("/api/start", JSON.stringify({ mode, gpu: "A100" }));
+    $("r3").textContent = "Gerando... abrindo o painel."; setTimeout(() => location.href = "/dashboard.html", 900); }
+  catch (er) { $("r3").className = "res err"; $("r3").textContent = er.message; }
+};
+</script>
+</body>
+</html>

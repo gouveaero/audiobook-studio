@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audiolivro, painel de controle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Oxanium:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+:root { --a: #35e6ff; --a2: #ff9a2e; --bg: #02070c; --tx: #d8f7ff; --dim: rgba(216,247,255,.5); --u: calc(100vh / 1080); }
+:root[data-tema="verde"] { --a: #3dff7a; --a2: #d9ff4a; --bg: #010a04; --tx: #d6ffe3; --dim: rgba(214,255,227,.5); }
+:root[data-tema="laranja"] { --a: #ff9a2e; --a2: #ff3d5a; --bg: #0b0502; --tx: #ffe9d2; --dim: rgba(255,233,210,.5); }
+@media (max-aspect-ratio: 16/9) { :root { --u: calc(100vw / 1920); } }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: #000; overflow: hidden; }
+body { display: grid; place-items: center; font-family: "Oxanium", system-ui, sans-serif; color: var(--tx); }
+.stage { position: relative; width: calc(var(--u) * 1920); height: calc(var(--u) * 1080); background: radial-gradient(ellipse at 50% 50%, color-mix(in srgb, var(--a) 9%, var(--bg)), var(--bg) 70%); overflow: hidden; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.abs { position: absolute; }
+.frame { border: calc(var(--u) * 1.5) solid color-mix(in srgb, var(--a) 40%, transparent); background: color-mix(in srgb, var(--a) 5%, transparent); backdrop-filter: blur(3px); padding: calc(var(--u) * 18) calc(var(--u) * 22); }
+.frame::before, .frame::after { content: ""; position: absolute; width: calc(var(--u) * 22); height: calc(var(--u) * 22); border: 0 solid var(--a); }
+.frame::before { left: calc(var(--u) * -3); top: calc(var(--u) * -3); border-left-width: 3px; border-top-width: 3px; }
+.frame::after { right: calc(var(--u) * -3); bottom: calc(var(--u) * -3); border-right-width: 3px; border-bottom-width: 3px; }
+.lab { font-size: calc(var(--u) * 20); color: var(--a); letter-spacing: .08em; margin-bottom: calc(var(--u) * 10); display: flex; justify-content: space-between; }
+
+.top { left: calc(var(--u) * 70); right: calc(var(--u) * 70); top: calc(var(--u) * 30); display: flex; justify-content: space-between; align-items: baseline; }
+.top h1 { font-size: calc(var(--u) * 54); font-weight: 700; letter-spacing: .02em; text-shadow: 0 0 calc(var(--u) * 24) var(--a); }
+.top span { font-size: calc(var(--u) * 24); color: var(--dim); }
+.live { color: var(--a) !important; }
+.live::before { content: "● "; animation: bl 1.4s infinite; }
+@keyframes bl { 50% { opacity: .2; } }
+
+.book { left: calc(var(--u) * 70); top: calc(var(--u) * 140); width: calc(var(--u) * 500); height: calc(var(--u) * 420); }
+.book .tx { font-size: calc(var(--u) * 27); line-height: 1.38; height: calc(var(--u) * 330); overflow: hidden; }
+.book .tx b { color: var(--a); font-weight: 600; text-shadow: 0 0 calc(var(--u) * 12) var(--a); }
+.caret { display: inline-block; width: calc(var(--u) * 12); height: calc(var(--u) * 24); background: var(--a); vertical-align: -.15em; animation: bl 1s infinite; }
+.log { left: calc(var(--u) * 70); top: calc(var(--u) * 600); width: calc(var(--u) * 500); height: calc(var(--u) * 360); font-family: "JetBrains Mono", monospace; font-size: calc(var(--u) * 17); line-height: 1.5; overflow: hidden; }
+.log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+.log div.ok { color: var(--a); } .log div.hi { color: var(--a2); }
+
+.center { left: 50%; top: calc(var(--u) * 540); transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
+.pct { font-size: calc(var(--u) * 170); font-weight: 700; line-height: 1; text-shadow: 0 0 calc(var(--u) * 40) var(--a); font-variant-numeric: tabular-nums; }
+.pct small { font-size: calc(var(--u) * 60); font-weight: 300; }
+.center .cap { font-size: calc(var(--u) * 24); color: var(--dim); margin-top: calc(var(--u) * 6); }
+.center .h { font-size: calc(var(--u) * 34); color: var(--a); margin-top: calc(var(--u) * 10); font-variant-numeric: tabular-nums; }
+
+.g { width: calc(var(--u) * 300); text-align: center; pointer-events: none; }
+.g .n { font-size: calc(var(--u) * 78); font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; text-shadow: 0 0 calc(var(--u) * 24) var(--c); color: var(--c); }
+.g .n small { font-size: calc(var(--u) * 30); font-weight: 300; color: var(--tx); }
+.g .t { position: absolute; left: 0; right: 0; top: calc(var(--u) * 205); font-size: calc(var(--u) * 21); color: var(--dim); }
+#gc { left: calc(var(--u) * 1450); top: calc(var(--u) * 292); --c: var(--a); }
+#gm { left: calc(var(--u) * 1450); top: calc(var(--u) * 702); --c: var(--a2); }
+.sideL { right: calc(var(--u) * 70); width: calc(var(--u) * 330); top: calc(var(--u) * 150); height: calc(var(--u) * 100); padding: calc(var(--u) * 10) calc(var(--u) * 18); }
+.toasts { position: absolute; left: 50%; top: calc(var(--u) * 100); transform: translateX(-50%); display: flex; flex-direction: column; gap: calc(var(--u) * 8); align-items: center; }
+.toast { font-size: calc(var(--u) * 24); padding: calc(var(--u) * 8) calc(var(--u) * 22); border: calc(var(--u) * 2) solid var(--a); color: var(--a); background: color-mix(in srgb, var(--a) 12%, #000); animation: tin .4s, tout .5s 5s forwards; box-shadow: 0 0 calc(var(--u) * 30) color-mix(in srgb, var(--a) 50%, transparent); }
+@keyframes tin { from { transform: scale(1.8); opacity: 0; } }
+@keyframes tout { to { opacity: 0; } }
+.hint { right: calc(var(--u) * 70); bottom: calc(var(--u) * 8); font-size: calc(var(--u) * 15); color: var(--dim); }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+</style>
+</head>
+<body>
+<main class="stage" id="stage">
+  <canvas id="c"></canvas>
+  <div class="abs top"><h1 id="tTitle">Livro</h1><span id="tSub"></span><span class="live" id="liveTxt">ao vivo</span></div>
+
+  <section class="abs frame book">
+    <div class="lab"><span id="chLabel">lendo</span><span>texto</span></div>
+    <div class="tx"><span id="tx"></span><span class="caret"></span></div>
+  </section>
+  <section class="abs frame log" id="log"></section>
+
+  <div class="abs center">
+    <div class="pct"><span id="pt">0</span><small>%</small></div>
+    <div class="cap">do audiolivro pronto</div>
+    <div class="h"><span id="hh">0</span> h de áudio</div>
+  </div>
+
+  <div class="abs g" id="gc"><div class="n"><span id="rc">0</span><small>×</small></div><div class="t" id="tc">nuvem, GPU 0%</div></div>
+  <div class="abs g" id="gm"><div class="n"><span id="rm">0</span><small>×</small></div><div class="t" id="tm">este computador</div></div>
+  <div class="toasts" id="toasts"></div>
+  <div class="abs hint">teclas: 1 ciano, 2 verde, 3 laranja</div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id), q = new URLSearchParams(location.search), DEMO = q.has("demo");
+const fmt = (n, d = 0) => n.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+const root = document.documentElement;
+function tema(t) { root.dataset.tema = t; try { localStorage.tema = t; } catch (e) {} }
+tema(q.get("tema") || (() => { try { return localStorage.tema; } catch (e) { return ""; } })() || "ciano");
+addEventListener("keydown", e => { const m = { 1: "ciano", 2: "verde", 3: "laranja" }[e.key]; if (m) tema(m); });
+const css = (v) => getComputedStyle(root).getPropertyValue(v).trim();
+
+// ---------- configuração (genérica) ----------
+const CFG = { livro: "Livro", autor: "Autor", voz: "Voz", segundos: 16, motor: "OmniVoice", nuvem: "NVIDIA A100", mac: "este computador", capitulos: 65 };
+function build() {
+  for (const k of Object.keys(CFG)) if (q.has(k)) CFG[k] = isNaN(q.get(k)) ? q.get(k) : Number(q.get(k));
+  document.title = CFG.livro + ", audiolivro";
+  $("tTitle").textContent = CFG.livro; $("tSub").textContent = CFG.autor + " · voz de " + CFG.voz + " · " + CFG.motor;
+  $("tm").textContent = CFG.mac;
+}
+fetch("config.json").then(r => r.json()).then(c => Object.assign(CFG, c)).catch(() => {}).finally(build);
+
+// ---------- dados ----------
+const DEMO_TEXT = ["A história de uma cidade é a história do mundo, mas é também a crônica de um lugar que frequentemente vivia na penúria.",
+  "Quando o rei capturou a cidadela, a cidade já era antiga. Não chegava a ser exatamente uma cidade.", "As ruas reluziam com galões dourados, vestidos por príncipes e generais."];
+let S = { total: 0, cloud: 0, mac: 0, gpu: 0, rateCloud: 0, rateMac: 0, hours: 0, done: [], macIds: [], live: [], titles: {} }, dT = 0;
+function demoState() { dT++; const p = Math.min(1, (dT % 150) / 140), n = Math.floor(p * CFG.capitulos), done = [];
+  for (let i = 1; i <= n; i++) done.push(String(i).padStart(2, "0"));
+  return { titles: {}, total: p, cloud: p, mac: p, gpu: 95 + Math.round(Math.random() * 5), rateCloud: 12 + Math.random() * 2, rateMac: .6 + Math.random() * .3, hours: p * 26, done, macIds: [],
+    live: [{ who: "cloud", ch: String(n + 1).padStart(2, "0"), title: "capítulo " + (n + 1), text: DEMO_TEXT[Math.floor(dT / 6) % 3] }] }; }
+async function poll() { try { if (DEMO) throw 0; S = await (await fetch("/api/state", { cache: "no-store" })).json(); $("liveTxt").textContent = "ao vivo"; }
+  catch (e) { S = demoState(); $("liveTxt").textContent = "demonstração"; } }
+setInterval(poll, DEMO ? 1000 : 2500); poll();
+const cur = { total: 0, cloud: 0, mac: 0, gpu: 0, rc: 0, rm: 0, hours: 0 };
+const ease = (k, to, a = .08) => (cur[k] += (to - cur[k]) * a);
+
+// ---------- texto, log e avisos ----------
+let target = "", pos = 0, lastKey = "", li = 0;
+const titleOf = (t) => { const m = /^(\d+)\.\s+(.*?)(?:\s+\(.*\))?$/.exec(t || ""); return m ? "capítulo " + m[1] + ", " + m[2] : (t || "lendo"); };
+setInterval(() => { const L = S.live || []; if (!L.length) return; const it = L[li % L.length], key = it.ch + it.text.slice(0, 30);
+  if (key !== lastKey && pos >= target.length - 1) { lastKey = key; target = it.text.length > 210 ? it.text.slice(0, 207) + "…" : it.text; pos = 0;
+    $("chLabel").textContent = (it.who === "mac" ? "mac" : "nuvem") + " · " + titleOf(it.title); } }, 500);
+setInterval(() => li++, 8000);
+setInterval(() => { if (pos < target.length) { pos = Math.min(target.length, pos + 3); const t = target.slice(0, pos), cut = Math.max(0, t.lastIndexOf(" ", t.length - 2) - 14);
+  $("tx").innerHTML = t.slice(0, cut) + "<b>" + t.slice(cut) + "</b>"; } }, 40);
+const logEl = $("log");
+function log(msg, cls = "") { const d = document.createElement("div"); d.className = cls; const n = new Date();
+  d.textContent = "[" + n.toTimeString().slice(0, 8) + "] " + msg; logEl.appendChild(d); while (logEl.children.length > 16) logEl.firstChild.remove(); }
+log("conectando à nuvem...", "ok");
+setInterval(() => { const L = S.live || [], it = L[Math.floor(Math.random() * L.length)] || null, r = Math.random();
+  if (it && r < .5) log("synth " + it.who + " ch" + it.ch + " » " + it.text.slice(0, 26).toLowerCase() + "...");
+  else if (r < .75) log("gpu " + Math.round(cur.gpu) + "%  nuvem " + fmt(cur.rc, 1) + "x  local " + fmt(cur.rm, 1) + "x", "ok");
+  else if (it) log("clone_voice --ref " + CFG.voz.toLowerCase().replace(/\s+/g, "_") + ".wav --chunk " + (1000 + Math.floor(Math.random() * 900)));
+}, 900);
+const seen = new Set(); let firstSeen = true;
+setInterval(() => { for (const id of (S.done || [])) if (!seen.has(id)) { seen.add(id);
+    if (!firstSeen) { const t = (S.titles && S.titles[id]) ? titleOf(S.titles[id]) : "capítulo " + parseInt(id);
+      log("capítulo concluído: " + t, "hi"); const e = document.createElement("div"); e.className = "toast"; e.textContent = t + " pronto"; $("toasts").appendChild(e);
+      setTimeout(() => e.remove(), 5600); flash = 1; } }
+  if ((S.done || []).length) firstSeen = false; }, 800);
+let flash = 0;
+
+// ---------- HUD em canvas ----------
+const cv = $("c"), x = cv.getContext("2d"); let K = 1;
+function size() { const r = $("stage").getBoundingClientRect(), d = devicePixelRatio || 1; cv.width = r.width * d; cv.height = r.height * d; K = cv.width / 1920; }
+addEventListener("resize", size); size();
+let peaks = new Array(180).fill(.3); fetch("voice_peaks.json").then(r => r.json()).then(p => peaks = p).catch(() => {});
+const CX = 960, CY = 540;
+function arc(cx, cy, r, a0, a1, w, col, glow = 0) { x.beginPath(); x.arc(cx * K, cy * K, r * K, a0, a1); x.lineWidth = w * K; x.strokeStyle = col; x.shadowColor = col; x.shadowBlur = glow * K; x.stroke(); x.shadowBlur = 0; }
+function ring(cx, cy, r, segs, gap, rot, w, col) { const s = Math.PI * 2 / segs; for (let i = 0; i < segs; i++) arc(cx, cy, r, rot + i * s, rot + i * s + s * (1 - gap), w, col); }
+function gauge(cx, cy, r, val, col) { arc(cx, cy, r, 0, 7, 10, "rgba(255,255,255,.08)"); arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, val), 10, col, 22);
+  for (let i = 0; i < 48; i++) { const a = i / 48 * Math.PI * 2, r1 = (r + 20) * K, r2 = (r + (i % 4 ? 26 : 34)) * K;
+    x.beginPath(); x.moveTo((cx + 0) * K + Math.cos(a) * r1, cy * K + Math.sin(a) * r1); x.lineTo(cx * K + Math.cos(a) * r2, cy * K + Math.sin(a) * r2); x.lineWidth = 2 * K; x.strokeStyle = col; x.globalAlpha = .55; x.stroke(); x.globalAlpha = 1; } }
+function hexgrid(t, A) { const s = 46, h = s * Math.sqrt(3); x.lineWidth = 1 * K; x.strokeStyle = A; x.globalAlpha = .07;
+  for (let r = -1; r < 1080 / h + 1; r++) for (let c = -1; c < 1920 / (s * 1.5) + 1; c++) { const px = c * s * 1.5, py = r * h + (c % 2 ? h / 2 : 0), d = Math.hypot(px - CX, py - CY),
+      pulse = Math.max(0, Math.sin(d / 90 - t / 700)); x.globalAlpha = .035 + .10 * pulse * Math.exp(-d / 800);
+      x.beginPath(); for (let k = 0; k < 6; k++) { const a = Math.PI / 3 * k; x[k ? "lineTo" : "moveTo"]((px + Math.cos(a) * s * .94) * K, (py + Math.sin(a) * s * .94) * K); } x.closePath(); x.stroke(); }
+  x.globalAlpha = 1; }
+function frame(t) {
+  const A = css("--a"), A2 = css("--a2"), W = cv.width, H = cv.height;
+  const tot = ease("total", S.total), c = ease("cloud", S.cloud), m = ease("mac", S.mac), g = ease("gpu", S.gpu, .15), rc = ease("rc", S.rateCloud), rm = ease("rm", S.rateMac), hh = ease("hours", S.hours);
+  $("pt").textContent = fmt(tot * 100); $("rc").textContent = fmt(rc); $("rm").textContent = fmt(rm, 1); $("hh").textContent = fmt(hh, 1);
+  $("tc").textContent = CFG.nuvem + ", GPU " + fmt(g) + "%"; flash *= .94;
+  x.clearRect(0, 0, W, H); hexgrid(t, A);
+  // anéis do orbe
+  ring(CX, CY, 262, 90, .35, t / 5200, 3, A); ring(CX, CY, 250, 4, .78, -t / 1800, 6, A2); ring(CX, CY, 318, 120, .55, -t / 9000, 2, A);
+  arc(CX, CY, 290, 0, 7, 14, "rgba(255,255,255,.07)"); arc(CX, CY, 290, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * tot, 14, A, 34 + 40 * flash);
+  const hx = CX * K + Math.cos(-Math.PI / 2 + Math.PI * 2 * tot) * 290 * K, hy = CY * K + Math.sin(-Math.PI / 2 + Math.PI * 2 * tot) * 290 * K;
+  x.fillStyle = "#fff"; x.shadowColor = A; x.shadowBlur = 30 * K; x.beginPath(); x.arc(hx, hy, 9 * K, 0, 7); x.fill(); x.shadowBlur = 0;
+  // radar
+  const sw = t / 1300, gr = x.createConicGradient(sw, CX * K, CY * K); gr.addColorStop(0, A + "55"); gr.addColorStop(.12, A + "00"); gr.addColorStop(1, A + "00");
+  x.fillStyle = gr; x.beginPath(); x.arc(CX * K, CY * K, 236 * K, 0, 7); x.fill();
+  // voz: onda polar reagindo à voz real
+  const act = .5 + .5 * (cur.gpu / 100);
+  for (let k = 0; k < 3; k++) { x.beginPath();
+    for (let i = 0; i <= 180; i++) { const u = i / 180, a = u * Math.PI * 2 - Math.PI / 2, env = peaks[i % 180] / .55,
+        rr = 200 + (Math.sin(u * 18 + t / 300 + k * 2) * 14 + Math.sin(u * 47 - t / 210) * 6) * (.4 + env) * act + env * 12 + k * 5;
+      const px = CX * K + Math.cos(a) * rr * K, py = CY * K + Math.sin(a) * rr * K; i ? x.lineTo(px, py) : x.moveTo(px, py); }
+    x.closePath(); x.lineWidth = (k ? 2 : 4) * K; x.strokeStyle = k ? A + "66" : A; x.shadowColor = A; x.shadowBlur = k ? 0 : 26 * K; x.stroke(); x.shadowBlur = 0; }
+  const cg = x.createRadialGradient(CX * K, CY * K, 0, CX * K, CY * K, 150 * K); cg.addColorStop(0, A + (Math.round(40 + 30 * Math.sin(t / 400) + 60 * flash).toString(16).padStart(2, "0"))); cg.addColorStop(1, A + "00");
+  x.fillStyle = cg; x.beginPath(); x.arc(CX * K, CY * K, 150 * K, 0, 7); x.fill();
+  // satélites em órbita (um por 2× de velocidade)
+  const n = Math.min(24, 3 + Math.round(rc * 1.2));
+  for (let i = 0; i < n; i++) { const a = t / (2200 + i * 130) * (i % 2 ? 1 : -1) + i * 2.4, r = 340 + (i % 3) * 14;
+    x.fillStyle = i % 5 ? A : A2; x.shadowColor = x.fillStyle; x.shadowBlur = 14 * K; x.beginPath(); x.arc(CX * K + Math.cos(a) * r * K, CY * K + Math.sin(a) * r * K, 3.2 * K, 0, 7); x.fill(); x.shadowBlur = 0; }
+  // medidores
+  gauge(1600, 340, 118, g / 100, A); gauge(1600, 750, 118, m, A2);
+  // linhas de ligação
+  x.setLineDash([6 * K, 10 * K]); x.lineDashOffset = -t / 40 * K; x.lineWidth = 2 * K;
+  for (const [yy, col] of [[340, A], [750, A2]]) { x.strokeStyle = col; x.globalAlpha = .6; x.beginPath(); x.moveTo(1290 * K, 540 * K); x.lineTo(1470 * K, yy * K); x.stroke(); }
+  x.setLineDash([]); x.globalAlpha = 1;
+  // capítulos: barra de segmentos na base
+  const N = CFG.capitulos, bw = 1780 / N, done = new Set(S.done || []), live = new Set((S.live || []).map(v => v.ch));
+  for (let i = 0; i < N; i++) { const id = String(i + 1).padStart(2, "0"), isD = done.has(id), isL = live.has(id);
+    x.fillStyle = isD ? ((S.macIds || []).includes(id) ? A2 : A) : isL ? "#fff" : "rgba(255,255,255,.1)"; x.globalAlpha = isL ? .5 + .5 * Math.sin(t / 150) : 1;
+    x.shadowColor = x.fillStyle; x.shadowBlur = isD ? 10 * K : 0; x.fillRect((70 + i * bw) * K, 1010 * K, (bw - 4) * K, 22 * K); }
+  x.globalAlpha = 1; x.shadowBlur = 0;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

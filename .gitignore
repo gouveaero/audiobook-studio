@@ -1,0 +1,12 @@
+projects/
+work/
+.venv/
+__pycache__/
+*.epub
+*.wav
+*.m4a
+*.m4b
+*.mp4
+*.pdf
+.env
+*.local.json
