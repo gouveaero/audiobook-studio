@@ -48,6 +48,7 @@ python -m studio voice  gravacao.m4a --project projects/meu-livro      # confira
 python -m studio generate --project projects/meu-livro                 # neste computador
 python -m studio cloud run --project projects/meu-livro --gpu A100     # ou na nuvem
 python -m studio assemble --project projects/meu-livro                 # M4B, capítulos e vídeo
+python -m studio publish  --project projects/meu-livro --dest "remote:Audiolivros"   # Google Drive (rclone)
 ```
 
 **Pelo Claude Code:** copie `skill/audiobook-studio` para `~/.claude/skills/` e peça: "faz o audiolivro de livro.epub com a minha voz em voz.m4a". A skill traz o roteiro, as decisões que vale confirmar e as armadilhas.
@@ -76,7 +77,7 @@ python -m studio assemble --project projects/meu-livro                 # M4B, ca
 ## Estrutura
 
 ```
-studio/    prepare_book, prepare_voice, generate, cloud, assemble, server, normalize_pt
+studio/    prepare_book, prepare_voice, generate, cloud, assemble, publish_drive, server, normalize_pt
 ui/        setup.html (assistente), dashboard.html (painel ao vivo)
 skill/     audiobook-studio/SKILL.md (skill do Claude Code)
 projects/  seus projetos (ignorado pelo Git: livros e vozes não vão para o repositório)

@@ -23,8 +23,13 @@ python -m studio voice gravacao.m4a --project projects/<nome>    # recorta ≤15
 python -m studio generate --project projects/<nome>              # local (auto: cuda > mps > cpu), retomável
 python -m studio cloud run --project projects/<nome> --gpu A100  # ou na nuvem
 python -m studio assemble --project projects/<nome>              # capítulos .m4a, .m4b com capítulos, .mp4
+python -m studio publish --project projects/<nome>               # envia M4B, vídeo e capa ao Google Drive e confere
 python -m studio ui --project projects/<nome>                    # assistente e painel em http://localhost:8791
 ```
+
+**Entrega no Drive é parte do trabalho.** Ao terminar, rode `publish` (rclone). O destino vem de `AUDIOBOOK_DRIVE_DEST` ou de
+`config.local.json` na raiz do repositório (`{"drive_dest": "remote:Pasta/Audiolivros"}`); cria uma pasta com o título do livro e
+confere o tamanho de cada arquivo depois do envio. Entregue o link ao usuário. Capítulos soltos só com `--with-chapters`.
 
 Layout de projeto: `book.json`, `cover.jpg`, `voice/{ref.wav,ref.txt,peaks.json}`, `work/` (cache e progresso), `chapters/NN.m4a`, `audiobook/`.
 
