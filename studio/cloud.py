@@ -130,6 +130,11 @@ def run(a):
                 print("O gerador na VM registrou erro (gen.log). Veja com: colab exec ... cat /content/gen.log"); break
     finally:
         if not a.keep and not (locals().get("pending")):
+            try:  # a lista de trechos marcados (flagged) some com a VM
+                os.makedirs(f"{P}/work", exist_ok=True)
+                colab("download", "-s", SESSION, "/content/project/work/progress.jsonl", f"{P}/work/progress.cloud.jsonl", check=False)
+            except subprocess.TimeoutExpired:
+                print("não consegui baixar o progress.jsonl")
             colab("stop", "-s", SESSION, check=False); print("VM encerrada.")
         elif locals().get("pending"):
             print("VM MANTIDA (faltam capítulos). Encerre com: colab --auth adc stop -s", SESSION)
