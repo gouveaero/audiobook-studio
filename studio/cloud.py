@@ -71,7 +71,8 @@ def run(a):
     P = os.path.abspath(a.project)
     book = json.load(open(f"{P}/book.json"))["chapters"]
     want = a.only.split(",") if a.only else [c["id"] for c in book]
-    todo = [i for i in want if not (os.path.exists(f"{P}/chapters/{i}.m4a") and probe_ok(f"{P}/chapters/{i}.m4a"))]
+    leave = set(filter(None, a.leave.split(",")))  # capítulos reservados para este computador (studio.generate --only)
+    todo = [i for i in want if i not in leave and not (os.path.exists(f"{P}/chapters/{i}.m4a") and probe_ok(f"{P}/chapters/{i}.m4a"))]
     if not todo:
         return print("Nada a gerar: todos os capítulos já existem e estão íntegros.")
     print(f"{len(todo)} capítulos para gerar na nuvem ({a.gpu})")
@@ -139,4 +140,5 @@ if __name__ == "__main__":
     ap.add_argument("cmd", choices=["run"]); ap.add_argument("--project", required=True)
     ap.add_argument("--gpu", default="A100", help="A100, L4, T4, H100")
     ap.add_argument("--only", default=""); ap.add_argument("--keep", action="store_true", help="não encerra a VM no fim")
+    ap.add_argument("--leave", default="", help="ids que este computador gera ao mesmo tempo (a VM pula); escolha do fim do livro")
     run(ap.parse_args())

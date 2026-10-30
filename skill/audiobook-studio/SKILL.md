@@ -38,6 +38,7 @@ Layout de projeto: `book.json`, `cover.jpg`, `voice/{ref.wav,ref.txt,peaks.json}
 ## Decisões que valem confirmar com o usuário
 
 - **Onde gerar.** Estimativa de tempo = horas de áudio ÷ velocidade. Referências medidas: A100 ~12× a fala com 3 processos (livro de 26 h em ~2 h 15 min); Mac (Apple GPU) ~0,7 a 1,2× (com pouca RAM livre cai muito: feche o Chrome); CPU: inviável para livro inteiro. Custo de referência: A100 ~6,7 unidades/h.
+- **Nuvem e computador juntos.** A VM vai do início ao fim do livro; o computador pega capítulos do FIM: `cloud run --leave 32` e, em paralelo, `generate --only 32`. Dimensione pelo tempo que a nuvem ainda leva: o computador (Mac ~0,7×) deve terminar antes dela, senão o livro fica esperando o mais lento. Se ele atrasar, envie os trechos dele (`work/chunks/NN_*.wav`) para a VM e apague a trava lá: a VM aproveita o cache e termina.
 - **O que não ler.** Padrão: notas, bibliografia, índice, créditos, agradecimentos. Ajuste com `--skip-title` ou `--skip-files`.
 - **Idioma.** Há normalização de números/datas/romanos só para português (`studio/normalize_pt.py`). Outros idiomas: crie `normalize_<lang>.py` com `normalize(texto)`; sem ele o modelo lê números sozinho, com mais erros.
 

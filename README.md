@@ -50,6 +50,8 @@ python -m studio book   livro.epub projects/meu-livro/book.json
 python -m studio voice  gravacao.m4a --project projects/meu-livro      # confira voice/ref.txt
 python -m studio generate --project projects/meu-livro                 # neste computador
 python -m studio cloud run --project projects/meu-livro --gpu A100     # ou na nuvem
+# os dois juntos: a nuvem pula os capítulos reservados e o computador os gera (escolha do fim do livro)
+python -m studio cloud run --project projects/meu-livro --leave 32,33 &  python -m studio generate --project projects/meu-livro --only 32,33
 python -m studio assemble --project projects/meu-livro                 # M4B, capítulos e vídeo
 python -m studio publish  --project projects/meu-livro --dest "remote:Audiolivros"   # Google Drive (rclone)
 ```

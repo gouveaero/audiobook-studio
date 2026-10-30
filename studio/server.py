@@ -40,27 +40,33 @@ def state():
     chars = {(c["id"], k): len(t) for c in book for k, t in enumerate(c["chunks"])}
     tot = sum(chars.values()) or 1
     done_ids = sorted(f[:-4] for f in os.listdir(pj("chapters")) if re.fullmatch(r"\w+\.m4a", f)) if os.path.isdir(pj("chapters")) else []
-    names = set(os.listdir(pj("work", "chunks"))) if os.path.isdir(pj("work", "chunks")) else set()
+    local = set(os.listdir(pj("work", "chunks"))) if os.path.isdir(pj("work", "chunks")) else set()
     cloud = jload(pj("work", "cloud_status.json"), {}) or {}
-    names |= set(cloud.get("chunks", []))
-    done_chars = 0; active = {}
-    for f in names:
+    remote = set(cloud.get("chunks", []))
+    got = {"cloud": 0, "local": 0}; active = {}; local_ch = set()
+    for f in local | remote:  # nuvem e este computador podem rodar juntos; cada trecho conta para quem o gerou
         m = re.fullmatch(r"(\w+)_(\d+)\.wav", f)
         if m and (m.group(1), int(m.group(2))) in chars:
-            done_chars += chars[(m.group(1), int(m.group(2)))]
+            who = "cloud" if f in remote else "local"
+            got[who] += chars[(m.group(1), int(m.group(2)))]
+            if who == "local":
+                local_ch.add(m.group(1))
             if m.group(1) not in done_ids:
-                active[m.group(1)] = max(active.get(m.group(1), -1), int(m.group(2)))
-    now = time.time(); HIST.append((now, done_chars))
+                k0 = active.get(m.group(1), (who, -1))[1]
+                active[m.group(1)] = (who, max(k0, int(m.group(2))))
+    done_chars = got["cloud"] + got["local"]
+    now = time.time(); HIST.append((now, got["cloud"], got["local"]))
     while HIST and now - HIST[0][0] > 120:
         HIST.pop(0)
-    rate = (done_chars - HIST[0][1]) / (now - HIST[0][0]) / 13 if now - HIST[0][0] > 10 else 0
+    dt = now - HIST[0][0]
+    rate_c = (got["cloud"] - HIST[0][1]) / dt / 13 if dt > 10 else 0
+    rate_l = (got["local"] - HIST[0][2]) / dt / 13 if dt > 10 else 0
     by = {c["id"]: c for c in book}
-    live = [{"who": "cloud" if cloud.get("chunks") else "local", "ch": i, "title": by[i]["title"],
-             "text": by[i]["chunks"][k + 1]} for i, k in active.items() if k + 1 < len(by[i]["chunks"])]
-    mode = "cloud" if cloud.get("chunks") else "local"
-    return {"total": done_chars / tot, "cloud": done_chars / tot if mode == "cloud" else 0, "mac": done_chars / tot if mode == "local" else 0,
-            "gpu": cloud.get("gpu", 0), "rateCloud": round(rate, 1) if mode == "cloud" else 0, "rateMac": round(rate, 1) if mode == "local" else 0,
-            "hours": round(done_chars / 13 / 3600, 1), "done": done_ids, "macIds": done_ids if mode == "local" else [],
+    live = [{"who": who, "ch": i, "title": by[i]["title"], "text": by[i]["chunks"][k + 1]}
+            for i, (who, k) in active.items() if k + 1 < len(by[i]["chunks"])]
+    return {"total": done_chars / tot, "cloud": got["cloud"] / tot, "mac": got["local"] / tot,
+            "gpu": cloud.get("gpu", 0), "rateCloud": round(rate_c, 1), "rateMac": round(rate_l, 1),
+            "hours": round(done_chars / 13 / 3600, 1), "done": done_ids, "macIds": sorted(local_ch & set(done_ids)),
             "titles": {c["id"]: c["title"] for c in book}, "live": live[:4], "jobs": {k: v["status"] for k, v in JOBS.items()}}
 
 
