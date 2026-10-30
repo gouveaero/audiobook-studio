@@ -29,10 +29,37 @@ def colab(*args, timeout=600, check=True):
     return out
 
 
-def vm_py(code, timeout=120):
+def vm_py(code, timeout=120, tries=3):
+    """Código curto na VM. O `colab exec` às vezes pendura sem erro: tenta de novo antes de desistir.
+    Nada longo passa por aqui (o kernel fica ocupado e as chamadas seguintes entram na fila); longo vai em nohup."""
     f = f"/tmp/_vm_{os.getpid()}.py"
     open(f, "w").write(code)
-    return colab("exec", "-s", SESSION, "-f", f, "--timeout", str(timeout), timeout=timeout + 60)
+    for t in range(tries):
+        try:
+            return colab("exec", "-s", SESSION, "-f", f, "--timeout", str(timeout), timeout=timeout + 60)
+        except subprocess.TimeoutExpired:
+            if t == tries - 1:
+                raise
+            print(f"colab exec pendurou, tentando de novo ({t + 2}/{tries})"); time.sleep(10)
+
+
+def vm_background(cmd, name, limit=1200):
+    """Roda `cmd` em nohup na VM e espera o arquivo de término, consultando com chamadas curtas."""
+    sh = f"({cmd}) > /content/{name}.log 2>&1; echo $? > /content/{name}.done"
+    vm_py(f"import subprocess;subprocess.Popen({sh!r},shell=True,start_new_session=True);print('ok')", 60)
+    t0 = time.time()
+    while time.time() - t0 < limit:
+        time.sleep(20)
+        try:
+            out = vm_py(f"import os;p='/content/{name}.done';print('@@'+(open(p).read().strip() if os.path.exists(p) else ''))", 60)
+        except (RuntimeError, subprocess.TimeoutExpired):
+            continue
+        code = out.split("@@", 1)[-1].strip()
+        if code:
+            if code != "0":
+                raise RuntimeError(f"{name} falhou na VM (código {code}); veja /content/{name}.log")
+            return
+    raise RuntimeError(f"{name} passou de {limit} s na VM")
 
 
 def probe_ok(path):
@@ -56,7 +83,9 @@ def run(a):
     else:
         sys.exit("Não consegui alocar a GPU. Tente de novo em alguns minutos.")
     try:
-        vm_py("import subprocess;print(subprocess.run('pip install -q omnivoice num2words 2>&1|tail -1',shell=True,capture_output=True,text=True).stdout)", 600)
+        print("instalando o OmniVoice na VM...")
+        vm_background("pip install -q omnivoice num2words", "pip")
+        print("instalado")
         here = os.path.dirname(os.path.abspath(__file__))
         vm_py("import os;os.makedirs('/content/project/voice',exist_ok=True);os.makedirs('/content/studio',exist_ok=True)", 60)
         for f in ("book.json", "voice/ref.wav", "voice/ref.txt"):
