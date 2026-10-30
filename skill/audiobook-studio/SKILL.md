@@ -24,12 +24,14 @@ python -m studio generate --project projects/<nome>              # local (auto: 
 python -m studio cloud run --project projects/<nome> --gpu A100  # ou na nuvem
 python -m studio assemble --project projects/<nome>              # capítulos .m4a, .m4b com capítulos, .mp4
 python -m studio publish --project projects/<nome>               # envia M4B, vídeo e capa ao Google Drive e confere
-python -m studio ui --project projects/<nome>                    # assistente e painel em http://localhost:8791
+python -m studio ui --project projects/<nome> [--page dashboard]  # abre como app (janela própria); `studio server` = só o servidor :8791
 ```
 
 **Entrega no Drive é parte do trabalho.** Ao terminar, rode `publish` (rclone). O destino vem de `AUDIOBOOK_DRIVE_DEST` ou de
 `config.local.json` na raiz do repositório (`{"drive_dest": "remote:Pasta/Audiolivros"}`); cria uma pasta com o título do livro e
 confere o tamanho de cada arquivo depois do envio. Informe o caminho da pasta no Drive. **Não crie link público** (`rclone link`) sem o usuário pedir. Capítulos soltos só com `--with-chapters`.
+
+**Painel durante a geração.** Assim que a geração começar, abra o painel como app, em segundo plano: `python -m studio ui --project projects/<nome> --page dashboard`. Ele abre numa janela própria (pywebview; sem ele, Chrome/Edge em modo app), não numa aba do navegador. Fechar a janela não interrompe a geração.
 
 Layout de projeto: `book.json`, `cover.jpg`, `voice/{ref.wav,ref.txt,peaks.json}`, `work/` (cache e progresso), `chapters/NN.m4a`, `audiobook/`.
 

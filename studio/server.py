@@ -140,7 +140,15 @@ class H(SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--project", required=True); ap.add_argument("--port", type=int, default=8791)
+    ap.add_argument("--exit-with-parent", action="store_true", help="encerra quando o processo pai (o app) sair")
     a = ap.parse_args(); P = os.path.abspath(a.project)
+    if a.exit_with_parent:
+        ppid = os.getppid()
+        def watch():
+            while os.getppid() == ppid:
+                time.sleep(2)
+            os._exit(0)
+        threading.Thread(target=watch, daemon=True).start()
     for d in ("work/chunks", "chapters", "voice"):
         os.makedirs(pj(d), exist_ok=True)
     print(f"http://localhost:{a.port}/  (projeto: {P})", flush=True)

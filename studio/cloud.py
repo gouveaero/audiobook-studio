@@ -73,10 +73,13 @@ def run(a):
         pending = set(todo)
         while pending:
             time.sleep(45)
-            out = vm_py("import subprocess,json,os\nsh=lambda c:subprocess.run(c,shell=True,capture_output=True,text=True).stdout\n"
-                        "print('@@'+json.dumps({'ch':[f for f in os.listdir('/content/project/chapters') if f.endswith('.m4a') and '.tmp.' not in f],"
-                        "'chunks':os.listdir('/content/project/work/chunks'),'gpu':int((sh('nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits').strip() or 0)),"
-                        "'err':int(sh('grep -c Traceback /content/gen.log').strip() or 0)}))", 90)
+            try:  # o `colab exec` às vezes pendura sem erro: pula a rodada em vez de morrer com a VM ligada
+                out = vm_py("import subprocess,json,os\nsh=lambda c:subprocess.run(c,shell=True,capture_output=True,text=True).stdout\n"
+                            "print('@@'+json.dumps({'ch':[f for f in os.listdir('/content/project/chapters') if f.endswith('.m4a') and '.tmp.' not in f],"
+                            "'chunks':os.listdir('/content/project/work/chunks'),'gpu':int((sh('nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits').strip() or 0)),"
+                            "'err':int(sh('grep -c Traceback /content/gen.log').strip() or 0)}))", 90)
+            except (RuntimeError, subprocess.TimeoutExpired) as e:
+                print("consulta à VM falhou, tento de novo:", str(e)[-120:]); continue
             try:
                 st = json.loads(out.split("@@", 1)[1]); os.makedirs(f"{P}/work", exist_ok=True)
                 json.dump({"chunks": st["chunks"], "gpu": st["gpu"]}, open(f"{P}/work/cloud_status.json", "w"))
@@ -85,7 +88,10 @@ def run(a):
             ready = {f[:-4] for f in st["ch"] if re.fullmatch(r"\w+\.m4a", f)} & pending
             for i in sorted(ready):
                 tmp = f"{P}/chapters/{i}.new.m4a"
-                colab("download", "-s", SESSION, f"/content/project/chapters/{i}.m4a", tmp, check=False)
+                try:
+                    colab("download", "-s", SESSION, f"/content/project/chapters/{i}.m4a", tmp, check=False)
+                except subprocess.TimeoutExpired:
+                    pass
                 if os.path.exists(tmp) and probe_ok(tmp):
                     os.replace(tmp, f"{P}/chapters/{i}.m4a"); pending.discard(i); print(f"ok {i} ({len(todo) - len(pending)}/{len(todo)})")
                 else:

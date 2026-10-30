@@ -5,5 +5,7 @@ faster-whisper>=1.0        # transcrição local da voz de referência
 torch>=2.4
 torchaudio>=2.4
 omnivoice                  # k2-fsa/OmniVoice, Apache-2.0
+# interface como app, em janela própria (opcional; sem ele abre o Chrome/Edge em modo app)
+pywebview>=5
 # nuvem (opcional): uv tool install google-colab-cli
 # sistema: ffmpeg e ffprobe no PATH

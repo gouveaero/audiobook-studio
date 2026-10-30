@@ -1,4 +1,6 @@
-# Audiobook Studio
+<p align="center"><img src="assets/logo.png" width="160" alt="Audiobook Studio"></p>
+
+<h1 align="center">Audiobook Studio</h1>
 
 Transforme um livro (EPUB) em audiolivro com a sua própria voz. Roda 100% no seu computador ou numa GPU na nuvem (Google Colab), com o modelo aberto [OmniVoice](https://github.com/k2-fsa/OmniVoice) (k2-fsa, Apache-2.0).
 
@@ -35,10 +37,11 @@ Para a nuvem (opcional): `uv tool install google-colab-cli` e faça o login do G
 
 ```sh
 python -m studio ui --project projects/meu-livro
-# abre http://localhost:8791  →  1. livro  2. voz (grave ou envie)  3. onde gerar
+# abre o app (janela própria)  →  1. livro  2. voz (grave ou envie)  3. onde gerar
+python -m studio ui --project projects/meu-livro --page dashboard   # direto no painel ao vivo
 ```
 
-O painel ao vivo fica em `/dashboard.html` (troque o tema com as teclas 1, 2 e 3; `?demo=1` simula o progresso).
+A interface abre como app, numa janela própria sem abas: usa o `pywebview` (janela nativa) e, sem ele, o Chrome ou o Edge em modo app. Para só subir o servidor e abrir no navegador: `python -m studio server --project ...` (http://localhost:8791). O painel ao vivo fica em `/dashboard.html` (troque o tema com as teclas 1, 2 e 3; `?demo=1` simula o progresso).
 
 **Pela linha de comando:**
 
@@ -77,7 +80,7 @@ python -m studio publish  --project projects/meu-livro --dest "remote:Audiolivro
 ## Estrutura
 
 ```
-studio/    prepare_book, prepare_voice, generate, cloud, assemble, publish_drive, server, normalize_pt
+studio/    prepare_book, prepare_voice, generate, cloud, assemble, publish_drive, server, app, normalize_pt
 ui/        setup.html (assistente), dashboard.html (painel ao vivo)
 skill/     audiobook-studio/SKILL.md (skill do Claude Code)
 projects/  seus projetos (ignorado pelo Git: livros e vozes não vão para o repositório)
