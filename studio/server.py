@@ -279,6 +279,9 @@ class H(SimpleHTTPRequestHandler):
                 return self.send_json(local_api.get_models_status())
             if p == "/api/version":
                 return self.send_json(local_api.version_info())
+            if p == "/api/updates":
+                # R44: falta de internet não vira 500
+                return self.send_json(local_api.verificar_versao_nova())
             m = PROJ_RE.match(p)
             if m:
                 pid, rest = m.group(1), m.group(2) or ""

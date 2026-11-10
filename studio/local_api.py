@@ -944,3 +944,80 @@ def version_info() -> dict:
         "donation_url": DONATION_URL or "",
         "android_waitlist_url": ANDROID_WAITLIST_URL or "",
     }
+
+
+def releases_api_url() -> str:
+    """URL da API de releases a partir de brand.GITHUB_REPO (sem barra no fim)."""
+    repo = (GITHUB_REPO or "").rstrip("/")
+    prefix = "https://github.com/"
+    if not repo.startswith(prefix):
+        raise ValueError("GITHUB_REPO inválido")
+    slug = repo[len(prefix):]
+    return f"https://api.github.com/repos/{slug}/releases/latest"
+
+
+def _normalizar_versao(texto: str) -> tuple[int, ...]:
+    """Converte 'v0.2.0-beta' em tupla comparável (0, 2, 0). Sufixos são ignorados no número."""
+    s = (texto or "").strip().lstrip("vV")
+    # pega só o núcleo numérico inicial
+    m = re.match(r"^(\d+(?:\.\d+)*)", s)
+    if not m:
+        return (0,)
+    return tuple(int(p) for p in m.group(1).split("."))
+
+
+def versao_mais_nova(atual: str, remota: str) -> bool:
+    """True se remota > atual (comparação numérica simples; R44)."""
+    a, b = _normalizar_versao(atual), _normalizar_versao(remota)
+    # equaliza comprimento
+    n = max(len(a), len(b))
+    a = a + (0,) * (n - len(a))
+    b = b + (0,) * (n - len(b))
+    return b > a
+
+
+def _http_get_json(url: str) -> dict:
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": APP_NAME})
+    with urllib.request.urlopen(req, timeout=8) as resp:
+        return json.loads(resp.read().decode("utf8"))
+
+
+def verificar_versao_nova(*, buscar=None) -> dict:
+    """Consulta a release mais nova no GitHub. Sem internet ou resposta inválida: sem erro (R44).
+
+    `buscar(url) -> dict` é injetável nos testes (nenhum teste acessa a rede).
+    """
+    atual = APP_VERSION
+    base = {
+        "current": atual,
+        "latest": None,
+        "update_available": False,
+        "release_url": None,
+        "github_repo": GITHUB_REPO,
+    }
+    try:
+        url = releases_api_url()
+    except ValueError:
+        return base
+    fetch = buscar or _http_get_json
+    try:
+        data = fetch(url)
+    except Exception:
+        # offline / timeout / DNS: silencioso
+        return {**base, "offline": True}
+    if not isinstance(data, dict):
+        return base
+    tag = data.get("tag_name") or data.get("name") or ""
+    if not isinstance(tag, str) or not tag.strip():
+        return base
+    latest = tag.strip()
+    href = data.get("html_url") or f"{GITHUB_REPO.rstrip('/')}/releases/tag/{latest.lstrip('v')}"
+    return {
+        **base,
+        "latest": latest,
+        "update_available": versao_mais_nova(atual, latest),
+        "release_url": href,
+        "offline": False,
+    }
