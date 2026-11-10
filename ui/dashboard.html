@@ -82,13 +82,14 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
     <div class="h"><span id="hh">0</span> h de áudio</div>
   </div>
 
-  <div class="abs g" id="gc"><div class="n"><span id="rc">0</span><small>×</small></div><div class="t" id="tc">nuvem, GPU 0%</div></div>
+  <div class="abs g" id="gc"><div class="n"><span id="rc">0</span><small>×</small></div><div class="t" id="tc">nuvem</div></div>
   <div class="abs g" id="gm"><div class="n"><span id="rm">0</span><small>×</small></div><div class="t" id="tm">este computador</div></div>
   <div class="toasts" id="toasts"></div>
   <div class="abs ctrls" id="ctrls">
     <button type="button" id="btnPause">Pausar</button>
     <button type="button" id="btnResume" disabled>Continuar</button>
     <button type="button" id="btnCancel">Cancelar</button>
+    <button type="button" id="btnHome" hidden>Voltar ao início</button>
     <span class="eta" id="etaTxt"></span>
     <span class="err" id="dashErr"></span>
   </div>
@@ -114,12 +115,26 @@ function fmtEta(sec) {
 }
 
 // ---------- configuração (genérica) ----------
-const CFG = { livro: "Livro", autor: "Autor", voz: "Voz", segundos: 16, motor: "OmniVoice", nuvem: "NVIDIA A100", mac: "este computador", capitulos: 65 };
+const CFG = { livro: "Livro", autor: "Autor", voz: "Voz", segundos: 16, motor: "pocket", nuvem: "NVIDIA A100", mac: "este computador", capitulos: 65, mode: "" };
+let modoLocal = true;
+function isMotorLocal(m) {
+  const s = String(m || "").toLowerCase();
+  if (!s) return true;
+  if (s === "pocket" || s.indexOf("fake") >= 0 || s.indexOf("tests.") === 0) return true;
+  if (s.indexOf("omnivoice") >= 0 && CFG.mode === "cloud") return false;
+  return s !== "cloud";
+}
 function build() {
   for (const k of Object.keys(CFG)) if (q.has(k)) CFG[k] = isNaN(q.get(k)) ? q.get(k) : Number(q.get(k));
+  modoLocal = isMotorLocal(CFG.motor) && CFG.mode !== "cloud" && !q.has("cloud");
   document.title = CFG.livro + ", audiolivro";
-  $("tTitle").textContent = CFG.livro; $("tSub").textContent = CFG.autor + " · voz de " + CFG.voz + " · " + CFG.motor;
+  $("tTitle").textContent = CFG.livro;
+  const vozLbl = (CFG.voz_label || CFG.voz || "voz").toString();
+  const limpa = vozLbl.replace(/^voz\s+/i, "");
+  $("tSub").textContent = [CFG.autor, limpa ? ("voz " + limpa) : ""].filter(Boolean).join(" · ");
   $("tm").textContent = CFG.mac;
+  $("gc").hidden = !!modoLocal;
+  $("tc").textContent = modoLocal ? "" : ((CFG.nuvem || "nuvem") + (CFG.gpu != null ? ", GPU " + CFG.gpu + "%" : ""));
 }
 async function loadCfg() {
   try {
@@ -144,21 +159,58 @@ function stateUrl() {
   if (PID) return "/api/projects/" + encodeURIComponent(PID) + "/state";
   return "/api/state";
 }
+function rotuloStatus(st) {
+  if (DEMO) return "demonstração";
+  const map = {
+    gerando: "ao vivo", rodando: "ao vivo", refazendo: "ao vivo",
+    pausado: "pausado", cancelado: "cancelado", cancelando: "cancelando",
+    montando: "montando", pronto: "pronto", concluido: "pronto", erro: "erro", parado: "parado"
+  };
+  return map[st] || st || "parado";
+}
 function syncCtrls() {
   const st = S.status || "parado";
-  const ativo = ["gerando", "rodando", "refazendo", "montando"].indexOf(st) >= 0;
+  const ativo = ["gerando", "rodando", "refazendo"].indexOf(st) >= 0;
+  const montando = st === "montando";
   const pausado = st === "pausado";
+  const cancelado = st === "cancelado";
+  const erro = st === "erro";
+  const finalOk = st === "pronto" || st === "concluido";
   $("btnPause").disabled = !ativo;
-  $("btnResume").disabled = !pausado;
+  $("btnPause").hidden = cancelado || erro || finalOk;
   $("btnCancel").disabled = !(ativo || pausado);
-  $("etaTxt").textContent = fmtEta(S.eta_seconds);
-  $("liveTxt").textContent = st === "pronto" ? "pronto" : (st === "pausado" ? "pausado" : (DEMO ? "demonstração" : "ao vivo"));
+  $("btnCancel").hidden = cancelado || erro || finalOk;
+  $("btnResume").hidden = false;
+  if (cancelado) {
+    $("btnResume").disabled = false;
+    $("btnResume").textContent = "Continuar a geração";
+  } else if (pausado) {
+    $("btnResume").disabled = false;
+    $("btnResume").textContent = "Continuar";
+  } else if (erro) {
+    $("btnResume").disabled = false;
+    $("btnResume").textContent = "Tentar de novo";
+  } else {
+    $("btnResume").disabled = true;
+    $("btnResume").textContent = "Continuar";
+  }
+  $("btnHome").hidden = !(cancelado || erro || pausado);
+  const mostraEta = ativo || montando || pausado;
+  $("etaTxt").textContent = mostraEta ? fmtEta(S.eta_seconds) : "";
+  $("liveTxt").textContent = rotuloStatus(st);
+  $("liveTxt").classList.toggle("live", ativo || DEMO);
   if (S.error) $("dashErr").textContent = S.error;
+  else if (!erro) $("dashErr").textContent = "";
 }
 async function ensureStarted() {
   if (!PID || DEMO || startedOnce) return;
   const st = S.status || "parado";
-  if (st === "parado" || st === "cancelado" || st === "erro" || !st) {
+  // cancelado/erro: a pessoa decide retomar (botão Continuar a geração / Tentar de novo)
+  if (st === "cancelado" || st === "erro") {
+    startedOnce = true;
+    return;
+  }
+  if (st === "parado" || !st) {
     try {
       await studio.post("/api/projects/" + encodeURIComponent(PID) + "/start", "{}");
       startedOnce = true;
@@ -200,14 +252,22 @@ $("btnPause").onclick = async () => {
 };
 $("btnResume").onclick = async () => {
   if (!PID) return;
-  try { await studio.post("/api/projects/" + encodeURIComponent(PID) + "/resume", "{}"); await poll(); }
-  catch (ex) { $("dashErr").textContent = ex.message || "Não continuou."; }
+  const st = S.status || "";
+  try {
+    if (st === "cancelado" || st === "erro" || st === "parado") {
+      await studio.post("/api/projects/" + encodeURIComponent(PID) + "/start", "{}");
+    } else {
+      await studio.post("/api/projects/" + encodeURIComponent(PID) + "/resume", "{}");
+    }
+    await poll();
+  } catch (ex) { $("dashErr").textContent = ex.message || "Não continuou."; }
 };
 $("btnCancel").onclick = async () => {
   if (!PID) return;
   try { await studio.post("/api/projects/" + encodeURIComponent(PID) + "/cancel", "{}"); await poll(); }
   catch (ex) { $("dashErr").textContent = ex.message || "Não cancelou."; }
 };
+$("btnHome").onclick = () => { location.href = studio.href("/home.html"); };
 const cur = { total: 0, cloud: 0, mac: 0, gpu: 0, rc: 0, rm: 0, hours: 0 };
 const ease = (k, to, a = .08) => (cur[k] += (to - cur[k]) * a);
 
@@ -216,18 +276,28 @@ let target = "", pos = 0, lastKey = "", li = 0;
 const titleOf = (t) => { const m = /^(\d+)\.\s+(.*?)(?:\s+\(.*\))?$/.exec(t || ""); return m ? "capítulo " + m[1] + ", " + m[2] : (t || "lendo"); };
 setInterval(() => { const L = S.live || []; if (!L.length) return; const it = L[li % L.length], key = it.ch + it.text.slice(0, 30);
   if (key !== lastKey && pos >= target.length - 1) { lastKey = key; target = it.text.length > 210 ? it.text.slice(0, 207) + "…" : it.text; pos = 0;
-    $("chLabel").textContent = (it.who === "mac" ? "mac" : "nuvem") + " · " + titleOf(it.title); } }, 500);
+    const onde = modoLocal ? "neste computador" : (it.who === "mac" || it.who === "local" ? "neste computador" : "na nuvem");
+    $("chLabel").textContent = onde + " · " + titleOf(it.title); } }, 500);
 setInterval(() => li++, 8000);
 setInterval(() => { if (pos < target.length) { pos = Math.min(target.length, pos + 3); const t = target.slice(0, pos), cut = Math.max(0, t.lastIndexOf(" ", t.length - 2) - 14);
   $("tx").innerHTML = t.slice(0, cut) + "<b>" + t.slice(cut) + "</b>"; } }, 40);
 const logEl = $("log");
 function log(msg, cls = "") { const d = document.createElement("div"); d.className = cls; const n = new Date();
   d.textContent = "[" + n.toTimeString().slice(0, 8) + "] " + msg; logEl.appendChild(d); while (logEl.children.length > 16) logEl.firstChild.remove(); }
-log("conectando à nuvem...", "ok");
-setInterval(() => { const L = S.live || [], it = L[Math.floor(Math.random() * L.length)] || null, r = Math.random();
-  if (it && r < .5) log("synth " + it.who + " ch" + it.ch + " » " + it.text.slice(0, 26).toLowerCase() + "...");
-  else if (r < .75) log("gpu " + Math.round(cur.gpu) + "%  nuvem " + fmt(cur.rc, 1) + "x  local " + fmt(cur.rm, 1) + "x", "ok");
-  else if (it) log("clone_voice --ref " + CFG.voz.toLowerCase().replace(/\s+/g, "_") + ".wav --chunk " + (1000 + Math.floor(Math.random() * 900)));
+log(modoLocal ? "geração local pronta para começar" : "conectando à nuvem...", "ok");
+setInterval(() => {
+  const st = S.status || "";
+  if (st === "cancelado" || st === "erro" || st === "pronto" || st === "concluido") return;
+  const L = S.live || [], it = L[Math.floor(Math.random() * L.length)] || null, r = Math.random();
+  if (modoLocal) {
+    if (it && r < .55) log("gerando capítulo " + it.ch + ": " + it.text.slice(0, 36).toLowerCase() + "...");
+    else if (r < .85) log("ritmo local " + fmt(cur.rm, 1) + "×", "ok");
+    else if (it) log("trecho do capítulo " + it.ch + " em andamento");
+  } else {
+    if (it && r < .5) log("gerando na nuvem, capítulo " + it.ch + ": " + it.text.slice(0, 26).toLowerCase() + "...");
+    else if (r < .75) log("nuvem " + fmt(cur.rc, 1) + "×  local " + fmt(cur.rm, 1) + "×", "ok");
+    else if (it) log("voz em uso no capítulo " + it.ch);
+  }
 }, 900);
 const seen = new Set(); let firstSeen = true;
 setInterval(() => { for (const id of (S.done || [])) if (!seen.has(id)) { seen.add(id);
@@ -257,7 +327,9 @@ function frame(t) {
   const A = css("--a"), A2 = css("--a2"), W = cv.width, H = cv.height;
   const tot = ease("total", S.total), c = ease("cloud", S.cloud), m = ease("mac", S.mac), g = ease("gpu", S.gpu, .15), rc = ease("rc", S.rateCloud), rm = ease("rm", S.rateMac), hh = ease("hours", S.hours);
   $("pt").textContent = fmt(tot * 100); $("rc").textContent = fmt(rc); $("rm").textContent = fmt(rm, 1); $("hh").textContent = fmt(hh, 1);
-  $("tc").textContent = CFG.nuvem + ", GPU " + fmt(g) + "%"; flash *= .94;
+  if (!modoLocal) $("tc").textContent = (CFG.nuvem || "nuvem") + ", GPU " + fmt(g) + "%";
+  else $("tc").textContent = "";
+  flash *= .94;
   x.clearRect(0, 0, W, H); hexgrid(t, A);
   // anéis do orbe
   ring(CX, CY, 262, 90, .35, t / 5200, 3, A); ring(CX, CY, 250, 4, .78, -t / 1800, 6, A2); ring(CX, CY, 318, 120, .55, -t / 9000, 2, A);
@@ -280,11 +352,15 @@ function frame(t) {
   const n = Math.min(24, 3 + Math.round(rc * 1.2));
   for (let i = 0; i < n; i++) { const a = t / (2200 + i * 130) * (i % 2 ? 1 : -1) + i * 2.4, r = 340 + (i % 3) * 14;
     x.fillStyle = i % 5 ? A : A2; x.shadowColor = x.fillStyle; x.shadowBlur = 14 * K; x.beginPath(); x.arc(CX * K + Math.cos(a) * r * K, CY * K + Math.sin(a) * r * K, 3.2 * K, 0, 7); x.fill(); x.shadowBlur = 0; }
-  // medidores
-  gauge(1600, 340, 118, g / 100, A); gauge(1600, 750, 118, m, A2);
-  // linhas de ligação
+  // medidores (nuvem/GPU só no fluxo antigo com cloud)
+  if (!modoLocal) {
+    gauge(1600, 340, 118, g / 100, A);
+    x.setLineDash([6 * K, 10 * K]); x.lineDashOffset = -t / 40 * K; x.lineWidth = 2 * K;
+    x.strokeStyle = A; x.globalAlpha = .6; x.beginPath(); x.moveTo(1290 * K, 540 * K); x.lineTo(1470 * K, 340 * K); x.stroke();
+  }
+  gauge(1600, 750, 118, m, A2);
   x.setLineDash([6 * K, 10 * K]); x.lineDashOffset = -t / 40 * K; x.lineWidth = 2 * K;
-  for (const [yy, col] of [[340, A], [750, A2]]) { x.strokeStyle = col; x.globalAlpha = .6; x.beginPath(); x.moveTo(1290 * K, 540 * K); x.lineTo(1470 * K, yy * K); x.stroke(); }
+  x.strokeStyle = A2; x.globalAlpha = .6; x.beginPath(); x.moveTo(1290 * K, 540 * K); x.lineTo(1470 * K, 750 * K); x.stroke();
   x.setLineDash([]); x.globalAlpha = 1;
   // capítulos: barra de segmentos na base
   const N = CFG.capitulos, bw = 1780 / N, done = new Set(S.done || []), live = new Set((S.live || []).map(v => v.ch));
