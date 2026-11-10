@@ -115,3 +115,53 @@ def test_autor_dos_commits_novos():
         if autor != esperado or committer != esperado:
             problemas.append(f"{sha}: autor ou committer diferente do LOCAL_MD")
     assert not problemas, "\n".join(problemas)
+
+
+def _rotulo_voz_permitido() -> str | None:
+    """Rótulo do pacote de voz (permitido dentro do .app)."""
+    try:
+        texto = ler_local_md()
+    except Exception:
+        return None
+    m = re.search(r'rótulo\s+no\s+app:\s*"([^"]+)"', texto, re.I)
+    if m:
+        return m.group(1).strip()
+    m = re.search(r"rótulo\s+no\s+app:\s*'([^']+)'", texto, re.I)
+    return m.group(1).strip() if m else None
+
+
+def _app_path() -> Path:
+    env = os.environ.get("APP_PATH", "").strip()
+    if env:
+        return Path(env).expanduser()
+    return RAIZ / "dist" / "Audiobook Studio.app"
+
+
+@pytest.mark.package
+def test_pacote_app_sem_dados_pessoais():
+    """R49 no conteúdo do .app: nenhum termo proibido, exceto o rótulo do pacote de voz."""
+    app = _app_path()
+    assert app.is_dir(), (
+        f"Camada package: app ausente em {app}. "
+        "Rode scripts/build_mac.sh e defina APP_PATH se necessário."
+    )
+    padroes = padroes_proibidos()
+    rotulo = _rotulo_voz_permitido()
+    problemas = []
+    # Só textos/recursos do app (não varre Mach-O/.so: o freeze pode embutir caminhos de build).
+    exts = {".plist", ".json", ".txt", ".md", ".js", ".html", ".css", ".xml", ".strings", ".csv"}
+    for path in app.rglob("*"):
+        if not path.is_file():
+            continue
+        rel = str(path.relative_to(app)).replace("\\", "/")
+        if path.suffix.lower() not in exts and path.name != "Info.plist":
+            continue
+        try:
+            texto = path.read_bytes().decode("utf-8", errors="replace")
+        except OSError:
+            continue
+        if rotulo and ("voice-pack" in rel or path.name == "manifest.json"):
+            texto = texto.replace(rotulo, "")
+        for i in achados(texto, padroes) + achados(rel, padroes):
+            problemas.append(f"{rel}: termo proibido nº {i + 1} do LOCAL_MD")
+    assert not problemas, "\n".join(problemas[:40])
