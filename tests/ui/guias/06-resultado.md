@@ -22,13 +22,10 @@ Critério de aprovação:
 - Refazer trecho regera apenas o trecho e remonta o capítulo (R31).
 - Botões "Salvar M4B" e "Mostrar no Finder" funcionam e não expõem caminhos internos da máquina na interface (R32).
 
-Resultado: reprovado.
-- Passo 1 e 2 (Tocar e avançar com Range, R30): `ready.html` listou os capítulos com `<audio>`, carregou `duration: 85,06 s`, avançou `currentTime` para `3,5 s` e respondeu ao pedido `Range: bytes=0-1023` com HTTP 206 (`Accept-Ranges: bytes`, `Content-Range: bytes 0-1023/498939`) (`tests/ui/capturas/06-pronto-inicial.png`).
-- Passo 3 (Refazer trecho, R31 - REPROVADO por estado que não bate com a realidade):
-  - O que funcionou no motor: clicar em "Refazer trecho 1" regerou exclusivamente `work/chunks/01_0000.wav` (`mtime` mudou de `1794320308` para `1794320814`, enquanto `01_0001.wav` a `01_0006.wav` e `03.m4a` permaneceram intactos) e remontou `chapters/01.m4a`, gravando `{"kind": "done", "ch": "01", ..., "flagged": []}` no fim de `work/progress.jsonl`.
-  - Esperado na tela: após refazer com sucesso (`flagged: []`), o trecho deixa de aparecer marcado como defeituoso.
-  - Obtido na tela: `_flagged_from_progress` em `studio/local_api.py` (linhas 246 a 267) soma todas as linhas históricas de `work/progress.jsonl` sem substituir o evento `done` anterior do mesmo capítulo; por isso, a tela continua mostrando "Trecho 1 marcado. Pode refazer só este pedaço." mesmo ao lado de "Trecho refeito." (`tests/ui/capturas/06-pronto-refeito.png`).
-- Passo 4 (Salvar M4B, R32 / R38 - REPROVADO por expor caminho interno na tela):
-  - Esperado: salvar/baixar o M4B ou confirmar em português simples sem expor caminho interno de máquina.
-  - Obtido: `ui/ready.html` (linha 134) exibe `M4B salvo: <caminho absoluto completo no disco>` (`tests/ui/capturas/06-pronto-salvar-m4b.png`), o que na execução normal fora de teste expõe `/Users/.../Library/Application Support/...` diretamente na interface.
-- Passo 5 (Mostrar no Finder, R32): Clicar em "Mostrar no Finder" acionou `POST /api/projects/<id>/reveal` (HTTP 200) e exibiu "Pasta aberta no Finder.".
+Resultado: aprovado na 2ª rodada.
+- Histórico (1ª rodada): reprovado porque `_flagged_from_progress` mantinha o trecho marcado após refazer e `"Salvar M4B"` exibia o caminho absoluto completo no disco.
+- 2ª rodada:
+  - Passo 1 e 2 (Tocar e avançar com Range, R30): player `<audio>` carregou a duração, avançou para `3,5 s` e respondeu HTTP 206 `Range` (`tests/ui/capturas/06-pronto-inicial.png`).
+  - Passo 3 (Refazer trecho, R31): ao clicar em `"Refazer trecho 1"`, apenas `01_0000.wav` e `01.m4a` foram regerados, a tela exibiu `"Trecho refeito."` e o aviso de trecho marcado desapareceu (`flagCount: 0`, `flagText: null`) (`tests/ui/capturas/06-pronto-refeito.png`).
+  - Passo 4 (Salvar M4B, R32 / R38): clicando em `"Salvar M4B"`, o arquivo `Crônicas da Praça.m4b` (974 KB) foi gravado e baixado, e `#ok` exibiu `"M4B salvo: Crônicas da Praça.m4b na pasta Downloads."` sem nenhum caminho interno de máquina (`tests/ui/capturas/06-pronto-salvar-m4b.png`).
+  - Passo 5 (Mostrar no Finder, R32): acionou `POST /api/projects/cronicas-da-praca/reveal` e exibiu `"Pasta aberta no Finder."`.
