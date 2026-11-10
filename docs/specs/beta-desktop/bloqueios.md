@@ -59,6 +59,11 @@ Cada item traz o que travou, a opção escolhida para seguir e o que o dono prec
 - **Opção escolhida para seguir:** o `build_mac.sh` fixa a SHA-256 do arquivo e aborta se ela mudar, e confere que o binário não foi compilado com partes GPL ou não livres. Com isso o item B10 deixa de ter binário GPL no instalador.
 - **Para o dono decidir:** antes de publicar, se aceita essa origem ou se prefere compilar o `ffmpeg` a partir do código oficial, o que exige ferramentas de compilação na máquina de build.
 
+### B14. "Salvar M4B" copia para a pasta Downloads, sem perguntar onde (T18, T19, R32)
+- **Situação:** na janela do app, o botão dizia "M4B salvo" sem gravar arquivo nenhum, porque a janela não aceita download iniciado pela página. O defeito apareceu na conferência da T19; o autoteste da janela não clicava no botão.
+- **Opção escolhida para seguir:** o botão copia o M4B para a pasta Downloads da pessoa e a tela só confirma depois de o arquivo existir. Se já houver um arquivo com o mesmo nome, o novo recebe " 2", " 3" no fim. "Mostrar no Finder" mostra o arquivo salvo. O autoteste agora clica no botão e confere o arquivo no disco.
+- **Para o dono decidir:** se prefere uma janela para escolher a pasta, em vez de salvar sempre em Downloads.
+
 ## Bloqueio que impede o resultado "completo"
 
 ### B12. R11 não passou depois de ajustar o corte (T6 sem marcar)

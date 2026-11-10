@@ -36,7 +36,7 @@ Marcação de testes: sem marca, rodam sem modelo e em segundos (motor falso, EP
 - [x] **T16.** Telas de início e conferência, fontes embutidas. (R9, R35, R39)
 - [x] **T17.** Tela de voz, com padrão, vozes prontas e clonagem guiada, e checagem da gravação. (R22 a R26)
 - [x] **T18.** Painel com controles reais e tela final com player. (R14, R18, R30 a R32)
-- [ ] **T19.** Teste de ponta a ponta na janela do navegador com o Chrome DevTools: EPUB curto até o M4B, sem usar a linha de comando. Conferir também as telas com capturas e corrigir o que estiver quebrado.
+- [x] **T19.** Teste de ponta a ponta na janela do navegador com o Chrome DevTools: EPUB curto até o M4B, sem usar a linha de comando. Conferir também as telas com capturas e corrigir o que estiver quebrado.
 
 ## Instalador e publicação preparada
 
@@ -48,4 +48,4 @@ Marcação de testes: sem marca, rodam sem modelo e em segundos (motor falso, EP
 
 ## Fechamento
 
-- [ ] **T25.** Rodar `scripts/verify_beta.sh` de um clone limpo da branch, com `LOCAL_MD`, `VOICE_PACK_DIR` e `EVIDENCE_PATH` apontando para fora do clone, e `EVIDENCE_PATH` para `docs/specs/beta-desktop/evidencia.md` no repositório original. Escrever nela cada requisito com o teste correspondente e o resultado, e listar H1 e H3 a H6 como não verificados.
+- [x] **T25.** Rodar `scripts/verify_beta.sh` de um clone limpo da branch, com `LOCAL_MD`, `VOICE_PACK_DIR` e `EVIDENCE_PATH` apontando para fora do clone, e `EVIDENCE_PATH` para `docs/specs/beta-desktop/evidencia.md` no repositório original. Escrever nela cada requisito com o teste correspondente e o resultado, e listar H1 e H3 a H6 como não verificados. **Rodada em 10/11/2026:** `verify_beta.sh` saiu com erro só por R11 (T6, B12); as camadas base e de pacote passaram. Resultado: incompleto.

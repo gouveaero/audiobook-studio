@@ -35,6 +35,60 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 | R41, R43 | T20, T21 (sem marcar) | `pytest -m package` rodado pelo Maestro no app do clone limpo | 2 passaram (`NSMicrophoneUsageDescription`; dados pessoais no pacote) e **2 falharam**: o autoteste da janela real para em "falha ao criar projeto", e a geração do livro curto em ambiente limpo termina em erro depois de o download real passar. Devolvido à Interface |
 | R40 a R43 | T20, T21 | `scripts/build_mac.sh` num clone limpo da `beta-desktop` (commit ee98c1c) e `VERIFY_LAYERS=package scripts/verify_beta.sh` no app desse clone, rodados pelo Maestro | passaram, depois das correções da Interface (scipy no pacote, voz do pacote copiada para o projeto, autoteste com passos isolados e só em 127.0.0.1). `.dmg`: 338.847.123 bytes (0,316 GB). Autoteste na janela real: `getUserMedia` presente, áudio com `Range`, guias 2, 4, 5 e 6 aprovados; o build agora falha se o autoteste falhar. Camada de pacote: 4 passaram em 71 s, com `HOME` vazio, `PATH=/usr/bin:/bin`, download real do modelo e livro curto até o M4B com capítulos e capa. Não verificado: instalar pelo `.dmg` em outro Mac e o aviso do Gatekeeper (conferência humana) |
 
+## Fechamento (T25)
+
+Clone limpo da `beta-desktop` no commit aa26a8f, fora do repositório. `scripts/build_mac.sh` e depois `scripts/verify_beta.sh` com as três camadas, `LOCAL_MD`, `VOICE_PACK_DIR` e `EVIDENCE_PATH` apontando para fora do clone. Rodado pelo Maestro em 10/11/2026.
+
+- **Resultado: incompleto.** `verify_beta.sh` saiu com erro por um único teste, o de R11 (T6 sem marcar, B12 em `bloqueios.md`).
+- Camada base: 229 passaram. Camada de modelo: 6 passaram e 1 falhou (R11) em 53 min 51 s. Camada de pacote: 4 passaram.
+- Instalador: `.dmg` de 339.092.834 bytes (0,316 GB). Cópia em `dist/Audiobook-Studio.dmg`, fora do git.
+- Autoteste na janela real: aprovado, sem som, com os guias 2, 4, 5 e 6; "Salvar M4B" clicado na janela e arquivo conferido na pasta Downloads do ambiente limpo.
+
+| Requisito | Teste | Resultado |
+|---|---|---|
+| R1 a R8 | `tests/test_prepare_book.py`; guias 2 e 3 | passou |
+| R9 | `test_rotas_api.py`, `test_telas.py`, `test_retomada.py`, `test_assemble.py`; guia 2 | passou |
+| R10 | `test_pocket_split.py`, `test_referencia.py` (modelo) | passou: 0 avisos em 425 pedaços |
+| R11 | `test_medicao.py`, `test_referencia.py` (modelo) | **FALHOU**: OmniVoice perdeu 45 de 6.324 (0,712%), Pocket perdeu 94 (1,486%), teto 1,212%. Ver B12 |
+| R12 | `test_referencia.py` (modelo) | mecanismo funcionou: 21 pedaços refeitos, 2 fora da faixa depois de 4 tentativas, trechos 35 e 62 marcados. O teste em que ele está falha por R11 |
+| R13 | `test_retomada.py` | passou. Não verificado: retomada com o Pocket real |
+| R14, R15, R18 | `test_tarefa.py`, `test_painel.py`, `test_dashboard_estados.py`; guia 5 | passou |
+| R16, R17 | `test_tarefa.py` | passou. Não verificado no app empacotado |
+| R19 a R21 | `test_audio.py` | passou. Não verificado: os mesmos números em áudio do Pocket real |
+| R22 | `test_voz_padrao.py` (modelo), `test_voz_tela.py`; guias 4 e 10 | passou |
+| R23 | `test_voz_tela.py` (motor falso e Pocket real); guia 4 | passou |
+| R24, R25 | `test_voz_tela.py`; guia 4 | passou. Não verificado: gravação pelo microfone (H6) e clonagem real com login |
+| R26 | `test_rotas_api.py`, `test_voz_tela.py` | passou |
+| R27 a R29 | `test_assemble.py`; guia 10 (`ffprobe` no M4B gerado com o Pocket) | passou |
+| R30 | `test_servidor_base.py`, `test_painel.py`; guias 6 e 10; autoteste da janela | passou |
+| R31 | `test_rotas_api.py`; guia 6 | passou com motor falso. Não verificado com o Pocket real: nenhum trecho ficou marcado no guia 10 |
+| R32 | `test_flagged_e_salvar.py`, `test_painel.py`; autoteste da janela (arquivo conferido no disco) | passou depois da correção de B14. Não verificado: a janela do Finder abrir |
+| R33, R34 | `test_servidor_base.py`, `test_flagged_e_salvar.py`; guia 7 | passou |
+| R35 | `test_telas.py`; guia 9 | passou |
+| R36 | `test_primeiro_uso.py`, `test_rotas_api.py` (download real na camada de modelo); guias 1 e 10 | passou |
+| R37 | `test_rede.py`, `test_selftest.py` | passou |
+| R38 | `test_rotas_api.py`, `test_servidor_base.py`, `test_guia8_texto.py`; guias 3 e 8 | passou |
+| R39 | `test_telas.py`, `test_guia8_texto.py`; guia 8 | passou |
+| R40 | `scripts/build_mac.sh` no clone limpo | passou |
+| R41 | `test_app_empacotado.py::test_livro_curto_ambiente_limpo` (pacote) | passou, com download real do modelo |
+| R42 | tamanho registrado acima | 0,316 GB, abaixo de 1,5 GB |
+| R43 | `test_app_empacotado.py` (pacote), `test_selftest.py` | passou. A permissão do microfone na primeira gravação fica em H6 |
+| R44 | `test_atualizacao.py` | passou. Não verificado: consulta real às releases |
+| R45 a R48 | `test_licencas_sobre.py`, `test_hidden_css.py`, `test_empacotamento_static.py` | passou |
+| R49 | `test_privacidade.py` (base e pacote) | passou |
+| R50 | `test_engines.py`, `test_generate.py`, `test_assemble.py` | passou. Não verificado: OmniVoice real, que não está instalado nesta máquina |
+| R51 | `test_cloud.py` com `fake_colab.py` | passou. Nuvem real fica em H5 |
+
+Guias de navegação: os 10 aprovados (1 a 9 com motor falso; o 10 de ponta a ponta com o Pocket real).
+
+### Conferências humanas, não verificadas
+
+- **H1.** Ouvir um capítulo inteiro no app.
+- **H3.** Instalar num usuário novo do Mac e, se possível, em outro Mac.
+- **H4.** Testar num Mac de 8 GB.
+- **H5.** Testar a geração real na nuvem.
+- **H6.** Conferir o pedido de permissão do microfone na primeira gravação.
+
 ## Decisões de quem constrói
 
 - **T1, R49:** o termo `hf_` do `local.md` é lido como token do Hugging Face (`hf_` seguido de 20 ou mais letras e números), para não proibir nomes como `hf_hub_download`. Os outros termos são procurados sem diferenciar maiúsculas.
@@ -48,6 +102,8 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 - **T8:** estados em `work/job.json`: gerando, pausado, cancelado, montando, pronto, erro e concluido (tarefa que acaba sem o livro inteiro). Pausa e cancelamento lidos entre pedaços.
 - **T9:** a geração na VM roda com `--no-assemble`; a montagem continua no computador.
 - **T7:** um teste do próprio Motor (`test_capitulo_com_include_false_nao_e_gerado`) foi reescrito na T9 para contar só eventos `done` do `progress.jsonl` e passou a exigir que nenhum evento do capítulo tirado apareça.
+- **T18, T19:** rota nova `POST /api/projects/<id>/save`, que copia o M4B para a pasta Downloads; `reveal` passa a mostrar o arquivo salvo e não devolve mais o caminho. Ver B14.
+- **T20:** o autoteste da janela toca o áudio no mudo.
 - **T6:** `rate_range` do Pocket de 12 a 19,5 caracteres por segundo; palavras inteiras em caixa alta vão em minúsculas antes do Pocket; preenchimento de frases curtas do Pocket ligado; evento `piece` no `progress.jsonl` com o ritmo de cada pedaço. R11 não passou: ver B12 em `bloqueios.md`.
 
 ## Execuções
@@ -251,3 +307,29 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 - Camadas pedidas: package
 - Camada `package`: passou. 4 passed, 233 deselected in 71.05s (0:01:11)
 - Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 17:45
+- Commit: 0b9a340 (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 226 passed, 11 deselected in 69.14s (0:01:09)
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 17:58
+- Commit: aa26a8f (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 229 passed, 11 deselected in 67.10s (0:01:07)
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 18:02
+- Commit: aa26a8f
+- Camadas pedidas: base model package
+- Camada `base`: passou. 229 passed, 11 deselected in 91.01s (0:01:31)
+- Camada `model`: FALHOU (código 1). 1 failed, 6 passed, 233 deselected in 3231.63s (0:53:51)
+- Camada `package`: passou. 4 passed, 236 deselected in 146.91s (0:02:26)
+- Resultado: FALHOU
