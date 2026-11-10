@@ -14,9 +14,10 @@ main { max-width: 760px; margin: 0 auto; }
 h1 { font-size: 40px; font-weight: 700; letter-spacing: .02em; }
 .sub { color: var(--dim); margin: 6px 0 28px; font-size: 18px; }
 .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 22px; }
-button, label.btn { background: transparent; color: var(--a); border: 1.5px solid var(--a); border-radius: 10px; padding: 10px 18px; font: inherit; font-size: 16px; cursor: pointer; display: inline-block; }
-button:hover, label.btn:hover { background: color-mix(in srgb, var(--a) 18%, transparent); }
+button, label.btn, a.btn { background: transparent; color: var(--a); border: 1.5px solid var(--a); border-radius: 10px; padding: 10px 18px; font: inherit; font-size: 16px; cursor: pointer; display: inline-block; text-decoration: none; }
+button:hover, label.btn:hover, a.btn:hover { background: color-mix(in srgb, var(--a) 18%, transparent); }
 button.go { background: var(--a); color: #00131a; font-weight: 700; }
+button.ghost { border-color: color-mix(in srgb, var(--a) 40%, transparent); color: var(--dim); }
 input[type=file] { display: none; }
 .list { display: flex; flex-direction: column; gap: 10px; }
 .item { border: 1px solid color-mix(in srgb, var(--a) 35%, transparent); background: color-mix(in srgb, var(--a) 5%, transparent); border-radius: 12px; padding: 16px 18px; display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
@@ -33,6 +34,9 @@ input[type=file] { display: none; }
   <p class="sub">Seus audiolivros neste computador. Funciona sem internet depois que o modelo já foi baixado.</p>
   <div class="row">
     <label class="btn go">Novo audiolivro<input type="file" id="epub" accept=".epub"></label>
+    <button type="button" class="ghost" id="sobre">Sobre</button>
+    <a class="btn" id="doar" hidden target="_blank" rel="noopener">Doar</a>
+    <a class="btn" id="android" hidden target="_blank" rel="noopener">Lista de espera Android</a>
   </div>
   <div id="err" class="err" hidden></div>
   <div id="lista" class="list"></div>
@@ -44,8 +48,33 @@ input[type=file] { display: none; }
 const $ = (i) => document.getElementById(i);
 const err = (m) => { $("err").hidden = !m; $("err").textContent = m || ""; };
 
+$("sobre").onclick = () => { location.href = studio.href("/about.html"); };
+
+async function linksExtras() {
+  try {
+    const j = await (await studio.fetch("/api/version")).json();
+    const doar = $("doar");
+    const andr = $("android");
+    if (j.donation_url) {
+      doar.hidden = false;
+      doar.href = j.donation_url;
+    } else {
+      doar.hidden = true;
+      doar.removeAttribute("href");
+    }
+    if (j.android_waitlist_url) {
+      andr.hidden = false;
+      andr.href = j.android_waitlist_url;
+    } else {
+      andr.hidden = true;
+      andr.removeAttribute("href");
+    }
+  } catch (e) {}
+}
+
 async function carregar() {
   err("");
+  await linksExtras();
   const j = await (await studio.fetch("/api/projects")).json();
   const lista = $("lista");
   lista.innerHTML = "";

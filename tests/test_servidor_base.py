@@ -56,6 +56,8 @@ def test_brand_centraliza_nome_e_urls_vazias():
     assert brand.VOICE_FALLBACK == "rafael"
     assert brand.DONATION_URL == ""
     assert brand.ANDROID_WAITLIST_URL == ""
+    assert brand.GITHUB_REPO.startswith("https://github.com/")
+    assert "@" not in brand.GITHUB_REPO
 
 
 def test_pastas_do_app_sob_audio_book_studio_home(casa):

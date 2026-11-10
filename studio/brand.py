@@ -5,6 +5,8 @@ from pathlib import Path
 APP_NAME = "Audiobook Studio"
 # Voz pronta do Pocket quando o pacote padrão não está instalado (escolha técnica provisória).
 VOICE_FALLBACK = "rafael"
+# Releases e aviso de versão (R44). Sem barra no fim.
+GITHUB_REPO = "https://github.com/gouveaero/audiobook-studio"
 # Só aparecem na interface quando preenchidos (R48).
 DONATION_URL = ""
 ANDROID_WAITLIST_URL = ""

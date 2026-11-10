@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.png">
+<title>Sobre · Audiobook Studio</title>
+<link rel="stylesheet" href="/fonts.css">
+<style>
+:root { --a: #35e6ff; --bg: #02070c; --tx: #d8f7ff; --dim: rgba(216,247,255,.55); }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: radial-gradient(ellipse at 50% 0%, #0b2733, var(--bg) 60%); color: var(--tx); font-family: "Oxanium", system-ui, sans-serif; min-height: 100vh; padding: 40px 20px 80px; }
+main { max-width: 720px; margin: 0 auto; }
+h1 { font-size: 34px; font-weight: 700; }
+.sub { color: var(--dim); margin: 6px 0 22px; font-size: 16px; }
+h2 { font-size: 20px; margin: 24px 0 10px; }
+p, li { font-size: 15px; line-height: 1.5; color: var(--tx); }
+ul { margin: 0 0 12px 1.2em; }
+.dim { color: var(--dim); }
+button { background: transparent; color: var(--a); border: 1.5px solid var(--a); border-radius: 10px; padding: 10px 16px; font: inherit; font-size: 15px; cursor: pointer; margin-bottom: 18px; }
+button:hover { background: color-mix(in srgb, var(--a) 18%, transparent); }
+.ai { font-size: 14px; color: var(--dim); border-left: 3px solid var(--a); padding: 6px 12px; margin-top: 28px; }
+a.ext { color: var(--a); }
+</style>
+</head>
+<body>
+<main>
+  <button type="button" id="voltar">Início</button>
+  <h1>Sobre</h1>
+  <p class="sub" id="ver">Audiobook Studio</p>
+
+  <h2>Termos de uso</h2>
+  <ul>
+    <li>Use só a sua voz, ou a de quem autorizou por escrito. Ao clonar, você declara esse consentimento.</li>
+    <li>Não use livros com DRM (proteção anticópia). O app recusa esses arquivos.</li>
+    <li>Não se passe por outra pessoa na narração nem nos metadados.</li>
+    <li>A narração é gerada por inteligência artificial. Isso fica registrado no audiolivro.</li>
+  </ul>
+
+  <h2>Privacidade</h2>
+  <p class="dim">O app não envia os seus livros nem a sua voz para a nuvem sem você pedir. A internet é usada para baixar o modelo, consultar versão nova e, se você quiser, o login do Hugging Face.</p>
+
+  <h2>Licenças</h2>
+  <p class="dim">Código próprio: MIT. Softwares de terceiros: veja THIRD_PARTY.md no repositório.</p>
+
+  <p class="ai">A narração é gerada por inteligência artificial.</p>
+</main>
+<script src="/studio.js"></script>
+<script>
+const $ = (i) => document.getElementById(i);
+$("voltar").onclick = () => { location.href = studio.href("/home.html"); };
+studio.fetch("/api/version").then(r => r.json()).then(j => {
+  $("ver").textContent = (j.app || "Audiobook Studio") + (j.version ? (" · " + j.version) : "");
+}).catch(() => {});
+</script>
+</body>
+</html>

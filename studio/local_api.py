@@ -13,7 +13,15 @@ import unicodedata
 from pathlib import Path
 
 from studio.audio import eq_por_graves
-from studio.brand import APP_NAME, VOICE_FALLBACK, app_home, ensure_dirs
+from studio.brand import (
+    ANDROID_WAITLIST_URL,
+    APP_NAME,
+    DONATION_URL,
+    GITHUB_REPO,
+    VOICE_FALLBACK,
+    app_home,
+    ensure_dirs,
+)
 from studio.prepare_book import BookError, build as build_book
 
 HERE = Path(__file__).resolve().parent
@@ -929,4 +937,10 @@ def attach_voice_to_project(pid: str, voice_id: str) -> None:
 
 
 def version_info() -> dict:
-    return {"app": APP_NAME, "version": APP_VERSION}
+    return {
+        "app": APP_NAME,
+        "version": APP_VERSION,
+        "github_repo": GITHUB_REPO,
+        "donation_url": DONATION_URL or "",
+        "android_waitlist_url": ANDROID_WAITLIST_URL or "",
+    }

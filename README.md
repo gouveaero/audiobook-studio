@@ -2,92 +2,40 @@
 
 <h1 align="center">Audiobook Studio</h1>
 
-Transforme um livro (EPUB) em audiolivro com a sua própria voz. Roda 100% no seu computador ou numa GPU na nuvem (Google Colab), com o modelo aberto [OmniVoice](https://github.com/k2-fsa/OmniVoice) (k2-fsa, Apache-2.0).
+Transforme um livro em português (EPUB) em audiolivro no seu Mac, com a voz padrão do app, uma voz pronta ou a sua própria voz. Tudo roda neste computador. Depois que o modelo for baixado na primeira vez, funciona sem internet.
 
-Você entrega um EPUB e de 10 a 20 segundos da sua voz. Sai um audiolivro com capítulos marcados, capa e metadados (M4B), um arquivo por capítulo e, se quiser, um vídeo com a capa de fundo.
+## O que você precisa
 
-## Como funciona
+- Um Mac com chip Apple (M1, M2, M3 ou mais novo).
+- Um arquivo EPUB em português (sem DRM).
+- Opcional: conta no Hugging Face só se quiser clonar a sua voz.
 
-```
-EPUB ──► capítulos limpos ──┐
-                            ├──► geração por trecho ──► capítulos .m4a ──► M4B + vídeo
-voz (10 a 20 s) ──► clone ──┘     (local ou GPU na nuvem)
-```
+## Como usar o app
 
-- **Texto:** o sumário do EPUB vira os capítulos. Notas de rodapé, bibliografia e índice ficam de fora. Em português, números, datas, horas e algarismos romanos são escritos por extenso ("século XIII" vira "século treze").
-- **Voz:** o trecho de referência é recortado no fim de uma frase e transcrito com Whisper local. Você confere a transcrição.
-- **Geração:** cada parágrafo (até 900 caracteres) é um trecho. Tudo fica em cache e é retomável. Cada trecho tem o ritmo conferido e é refeito se sair cortado ou repetido.
-- **Montagem:** M4B com capítulos e capa, um M4A por capítulo com metadados, e um MP4 com a capa ampliada sobre fundo desfocado.
+1. Abra o **Audiobook Studio**.
+2. Escolha **Novo audiolivro** e selecione o EPUB.
+3. Confira os capítulos (incluir, tirar ou renomear).
+4. Escolha a voz (padrão, pronta ou a sua).
+5. Aguarde a geração. Você pode pausar, continuar ou cancelar.
+6. Na tela final, ouça os capítulos, refaça trechos se precisar e salve o M4B.
 
-## Instalação
+A narração é gerada por inteligência artificial. Use só a sua voz, ou a de quem autorizou por escrito. Livros com direitos autorais são para uso pessoal, salvo licença.
 
-Requisitos: Python 3.11 ou mais novo, `ffmpeg` e `ffprobe` no PATH.
+## Se o Mac recusar abrir o app
 
-```sh
-git clone <este repositório> && cd audiobook-studio
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt        # instale o torch certo para o seu hardware
-```
+O instalador usa assinatura ad hoc (sem conta de desenvolvedor Apple). Na primeira abertura o macOS pode avisar que o app é de um desenvolvedor não identificado.
 
-Para a nuvem (opcional): `uv tool install google-colab-cli` e faça o login do Google (`gcloud auth application-default login` com o escopo do Colab). Precisa de um plano do Colab com unidades de computação.
+1. Vá em **Ajustes do Sistema → Privacidade e Segurança**.
+2. Procure a mensagem sobre o Audiobook Studio e clique em **Abrir mesmo assim**.
+3. Se não aparecer, clique no app com a tecla **Control** pressionada (ou botão direito) → **Abrir** → confirme.
 
-## Uso
+Detalhes da Apple: [Abrir um app de um desenvolvedor não identificado](https://support.apple.com/pt-br/HT202491).
 
-**Pela interface** (recomendado):
+## Licenças
 
-```sh
-python -m studio ui --project projects/meu-livro
-# abre o app (janela própria)  →  1. livro  2. voz (grave ou envie)  3. onde gerar
-python -m studio ui --project projects/meu-livro --page dashboard   # direto no painel ao vivo
-```
+- Código próprio: [LICENSE](LICENSE) (MIT).
+- Softwares e modelos de terceiros: [THIRD_PARTY.md](THIRD_PARTY.md).
 
-A interface abre como app, numa janela própria sem abas: usa o `pywebview` (janela nativa) e, sem ele, o Chrome ou o Edge em modo app. Para só subir o servidor e abrir no navegador: `python -m studio server --project ...` (http://localhost:8791). O painel ao vivo fica em `/dashboard.html` (troque o tema com as teclas 1, 2 e 3; `?demo=1` simula o progresso).
+## Linha de comando (OmniVoice e Colab)
 
-**Pela linha de comando:**
-
-```sh
-python -m studio book   livro.epub projects/meu-livro/book.json
-python -m studio voice  gravacao.m4a --project projects/meu-livro      # confira voice/ref.txt
-python -m studio generate --project projects/meu-livro                 # neste computador
-python -m studio cloud run --project projects/meu-livro --gpu A100     # ou na nuvem
-# os dois juntos: a nuvem pula os capítulos reservados e o computador os gera (escolha do fim do livro)
-python -m studio cloud run --project projects/meu-livro --leave 32,33 &  python -m studio generate --project projects/meu-livro --only 32,33
-python -m studio assemble --project projects/meu-livro                 # M4B, capítulos e vídeo
-python -m studio publish  --project projects/meu-livro --dest "remote:Audiolivros"   # Google Drive (rclone)
-```
-
-**Pelo Claude Code:** copie `skill/audiobook-studio` para `~/.claude/skills/` e peça: "faz o audiolivro de livro.epub com a minha voz em voz.m4a". A skill traz o roteiro, as decisões que vale confirmar e as armadilhas.
-
-## Velocidade e custo (medidos)
-
-| Onde | Velocidade | Livro de 26 h de áudio |
-|---|---|---|
-| A100 no Colab, 3 processos | ~12× a fala | ~2 h 15 min, ~15 unidades de computação |
-| Mac com GPU Apple | ~0,7 a 1,2× | ~25 a 35 h |
-| CPU | muito abaixo do tempo real | inviável para um livro inteiro |
-
-## Qualidade: o que mais pesa
-
-- A **voz de referência**: de 8 a 15 s, sem ruído, no tom do livro. A transcrição precisa ser exata.
-- Gere o mesmo parágrafo com mais de uma referência e ouça antes de rodar o livro inteiro.
-- Nomes próprios e siglas podem sair com pronúncia errada; amostre alguns capítulos.
-
-## Limites e uso responsável
-
-- Use **apenas a sua voz**, ou a de quem autorizou por escrito. Avise que a narração é gerada por IA.
-- O áudio de um livro com direitos autorais é para uso pessoal, salvo licença.
-- O Colab tem regras de uso; mantenha o uso pessoal e moderado.
-- A normalização de números existe só em português por enquanto. Para outro idioma, crie `studio/normalize_<idioma>.py` com uma função `normalize(texto)`.
-
-## Estrutura
-
-```
-studio/    prepare_book, prepare_voice, generate, cloud, assemble, publish_drive, server, app, normalize_pt
-ui/        setup.html (assistente), dashboard.html (painel ao vivo)
-skill/     audiobook-studio/SKILL.md (skill do Claude Code)
-projects/  seus projetos (ignorado pelo Git: livros e vozes não vão para o repositório)
-```
-
-## Créditos
-
-Modelo: [k2-fsa/OmniVoice](https://github.com/k2-fsa/OmniVoice) (Apache-2.0). Transcrição: faster-whisper. Números por extenso: num2words.
+O fluxo antigo por terminal, com OmniVoice e GPU no Colab, continua valendo. Está em [docs/linha-de-comando.md](docs/linha-de-comando.md).

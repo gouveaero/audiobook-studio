@@ -43,7 +43,11 @@ def wait_up(url, secs=20):
 def build_parser():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--project", default=None, help="projeto único (modo skill); omitido abre a lista de livros")
-    ap.add_argument("--page", choices=["setup", "dashboard", "home", "review", "voice", "ready"], default="home")
+    ap.add_argument(
+        "--page",
+        choices=["setup", "dashboard", "home", "review", "voice", "ready", "about"],
+        default="home",
+    )
     ap.add_argument("--port", type=int, default=8791)
     return ap
 
