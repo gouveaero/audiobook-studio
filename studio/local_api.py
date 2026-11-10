@@ -1058,13 +1058,15 @@ def attach_voice_to_project(pid: str, voice_id: str) -> None:
     else:
         (p / "voice").mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, p / "voice" / "manifest.json")
-        # copia ref se existir (voz clonada / pacote)
-        for name in ("ref.wav", "ref.txt"):
+        # copia pesos e ref se existirem (voz clonada / pacote)
+        if man is None:
+            man = json.loads((p / "voice" / "manifest.json").read_text(encoding="utf8"))
+        for name in ("ref.wav", "ref.txt", (man or {}).get("file") or ""):
+            if not name:
+                continue
             f = src.parent / name
             if f.is_file():
                 shutil.copy2(f, p / "voice" / name)
-        if man is None:
-            man = json.loads((p / "voice" / "manifest.json").read_text(encoding="utf8"))
     rotulo = (man or {}).get("label") or voice_id
     cfg_path = p / "config.json"
     try:

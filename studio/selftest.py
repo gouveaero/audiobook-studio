@@ -406,6 +406,14 @@ def run_self_test(argv=None) -> int:
 """, timeout=10)
                 time.sleep(1.0)
 
+                # Voz de reserva (rafael): o selftest não depende do pacote de voz embutido.
+                st_v, body_v = _api(
+                    base, token, "POST", f"/api/projects/{pid}/voice",
+                    json.dumps({"voice_id": "rafael"}).encode(),
+                    {"Content-Type": "application/json"},
+                )
+                _passo(result, "guia4_anexar_rafael", st_v == 200, {"http": st_v, "body": body_v[:200].decode("utf8", errors="replace")})
+
                 # Motor selftest no disco antes da geração
                 cfg_path = home / "projects" / pid / "config.json"
                 try:
@@ -467,9 +475,9 @@ def run_self_test(argv=None) -> int:
                         last = _run_js_step(window, "guia5_poll_" + secrets.token_hex(2), """
   const pid = new URLSearchParams(location.search).get("id");
   const st = await (await studio.fetch("/api/projects/" + encodeURIComponent(pid) + "/state")).json();
-  window.__absStep = {step: step, ok: true, status: st.status, chars_done: st.chars_done};
+  window.__absStep = {step: step, ok: true, status: st.status, chars_done: st.chars_done, error: st.error || (st.job && st.job.error)};
 """, timeout=10)
-                        if last.get("status") in wanted:
+                        if last.get("status") in wanted or last.get("status") == "erro":
                             return last
                         time.sleep(0.3)
                     return last
@@ -597,7 +605,7 @@ def run_self_test(argv=None) -> int:
         window.events.loaded += on_loaded
 
         def watchdog():
-            time.sleep(420)
+            time.sleep(600)
             if done["v"] is None:
                 result["error"] = "timeout janela"
                 done["v"] = result

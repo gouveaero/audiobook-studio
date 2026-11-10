@@ -117,6 +117,13 @@ def voice_for(P, book):
         if os.environ.get("VOICE_PACK_DIR"):
             candidatos.append(os.environ["VOICE_PACK_DIR"])
         candidatos.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "build", "voice-pack"))
+        try:
+            from studio.paths import voice_pack_bundled
+            pack = voice_pack_bundled()
+            if pack:
+                candidatos.append(str(pack))
+        except Exception:
+            pass
         if man.get("id"):
             candidatos.append(str(app_home() / "voices" / man["id"]))
         for d in candidatos:
