@@ -21,3 +21,12 @@ Cada item traz o que travou, a opção escolhida para seguir e o que o dono prec
 - **Opção escolhida para seguir:** não entram no `book.json`, então não aparecem na tela de conferência como itens desmarcados.
 - **Para o dono decidir:** se devem aparecer desmarcados, para a pessoa poder incluir de volta.
 
+
+### B5. Notas de rodapé no fim do capítulo (T11)
+- **Situação:** o `book.json` corrigido à mão do livro 1 ainda trazia as notas de rodapé de seis capítulos; o `prepare_book` agora as tira, como sua descrição já dizia.
+- **Opção escolhida para seguir:** notas de rodapé e separadores como "*" não são lidos.
+- **Para o dono decidir:** se as notas devem ser lidas.
+
+### B6. Divisões em romano e títulos em maiúsculas (T11, R4)
+- **Opção escolhida para seguir:** quando o sumário tem divisões em romano com capítulos em arábico dentro, as divisões viram partes ("Parte I: Nome") e os capítulos ficam "Parte I, capítulo 1: Subtítulo". Título todo em maiúsculas fica só com a inicial maiúscula. Capítulo chamado "Notas sobre..." fica no livro; só saem "Nota", "Notas", "Notas finais" e "Notas e referências".
+- **Para o dono decidir:** se esses nomes servem.

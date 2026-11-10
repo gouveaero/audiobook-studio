@@ -22,7 +22,7 @@ Marcação de testes: sem marca, rodam sem modelo e em segundos (motor falso, EP
 ## Livro
 
 - [x] **T10.** Correções em `prepare_book.py`, com EPUBs sintéticos reproduzindo cada defeito. (R1 a R8)
-- [ ] **T11.** Rodar nos dois livros reais de `local.md`, usando o `book.json` corrigido à mão do primeiro como lista de conferência, sem exigir igualdade. Corrigir o que aparecer, sem regra específica para um só livro.
+- [x] **T11.** Rodar nos dois livros reais de `local.md`, usando o `book.json` corrigido à mão do primeiro como lista de conferência, sem exigir igualdade. Corrigir o que aparecer, sem regra específica para um só livro.
 
 ## Áudio
 

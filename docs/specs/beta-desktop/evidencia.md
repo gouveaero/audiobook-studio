@@ -8,6 +8,7 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 |---|---|---|---|
 | R49 (parcial, repetir na T24) | T1 | `tests/test_privacidade.py` via `VERIFY_LAYERS=base scripts/verify_beta.sh` | 5 passaram; controle negativo com termo extra no `LOCAL_MD` reprovou como esperado |
 | R1 a R8 | T10 | `tests/test_prepare_book.py` (EPUBs sintéticos de `tests/epub_sintetico.py`) via `VERIFY_LAYERS=base scripts/verify_beta.sh` | 24 passaram na `beta-desktop` (29 no total da camada). Livros reais ficam para a T11 |
+| R2 a R4 (livros reais) | T11 | `tests/test_prepare_book.py` (4 testes novos) e `prepare_book` rodado pelo Maestro nos dois livros de `local.md`, com saída em pasta temporária | 33 passaram na camada base. Livro 1: 32 capítulos, mesmos ids e títulos da lista corrigida à mão; texto difere só em três capítulos (2 a 3%), pelas notas de rodapé que deixaram de ser lidas. Livro 2: 66 capítulos, partes e capítulos nomeados. Não verificado: como o Pocket lê subtítulos em maiúsculas do livro 2 |
 
 ## Decisões de quem constrói
 
@@ -31,4 +32,12 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 - Commit: d35e3b0 (com alterações não commitadas)
 - Camadas pedidas: base
 - Camada `base`: passou. 29 passed in 3.00s
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 13:50
+- Commit: dd9034f (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 33 passed in 6.70s
 - Resultado: passou
