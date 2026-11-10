@@ -25,6 +25,7 @@ from tests.conftest import RAIZ, hf_home_sem_login, local_paths
 # (trecho, pedaço) do capítulo 03 que saíram cortados no áudio de referência, todos na tentativa 0 (semente 1000)
 PEDACOS = [(28, 0), (25, 0), (61, 1), (47, 3)]
 CAUDA_MINIMA_MS = 120    # pedaços inteiros medidos: 280 a 460 ms de silêncio no fim; cortados: 0 ms
+CAUDA_MAXIMA_MS = 300    # depois de aparar: cauda fixa (~200 ms), sem o silêncio longo do EOS (R12)
 FIM_MAXIMO_DB = -25.0    # últimos 80 ms em relação ao pico: inteiros abaixo de -37 dB; cortados acima de -8 dB
 
 PROGRAMA = r"""
@@ -104,6 +105,33 @@ def test_carga_ajusta_o_limiar_de_fim_de_fala(monkeypatch):
     assert e.model.eos_threshold == EOS_THRESHOLD
 
 
+def test_apara_silencio_final_deixa_cauda_fixa():
+    """Apara silêncio longo no fim; silêncio curto e voz no fim não mexem (R11, R12)."""
+    from studio.engines.pocket import CAUDA_MS, apara_silencio_final
+
+    assert CAUDA_MS > CAUDA_MINIMA_MS
+    assert CAUDA_MS <= CAUDA_MAXIMA_MS
+    sr = 24000
+    voz = np.sin(np.arange(sr) * 2 * np.pi * 200 / sr) * 0.5
+
+    longo = np.concatenate([voz, np.zeros(int(sr * 0.9))])
+    aparado = apara_silencio_final(longo, sr)
+    cauda, _ = fim_do_pedaco(aparado, sr)
+    assert abs(cauda - CAUDA_MS) <= 20
+    assert len(aparado) < len(longo)
+    # não cortou voz: o começo e o pico batem
+    assert np.allclose(aparado[: len(voz)], voz)
+
+    curto = np.concatenate([voz, np.zeros(int(sr * 0.1))])  # 100 ms < CAUDA_MS
+    mesmo = apara_silencio_final(curto, sr)
+    assert len(mesmo) == len(curto)
+    assert np.allclose(mesmo, curto)
+
+    so_voz = apara_silencio_final(voz, sr)
+    assert len(so_voz) == len(voz)
+    assert np.allclose(so_voz, voz)
+
+
 @pytest.mark.model
 def test_fim_dos_pedacos_sai_inteiro(tmp_path):
     from studio.wavio import read_wav
@@ -137,6 +165,9 @@ def test_fim_dos_pedacos_sai_inteiro(tmp_path):
 
     cortados = [x for x in pedacos if x["cauda_ms"] < CAUDA_MINIMA_MS or x["fim80_db"] > FIM_MAXIMO_DB]
     assert cortados == [], "fim abrupto: " + "; ".join(f"k{x['k']:02d}s{x['s']} cauda {x['cauda_ms']} ms, {x['fim80_db']:.1f} dB" for x in cortados)
+    longos = [x for x in pedacos if x["cauda_ms"] > CAUDA_MAXIMA_MS]
+    assert longos == [], "cauda longa demais: " + "; ".join(
+        f"k{x['k']:02d}s{x['s']} cauda {x['cauda_ms']} ms" for x in longos)
     sem_ultima = [x for x in pedacos if normalizar(x["ouvido"])[-1:] != normalizar(x["texto"])[-1:]]
     assert sem_ultima == [], "última palavra perdida: " + "; ".join(
         f"k{x['k']:02d}s{x['s']} {normalizar(x['texto'])[-1]!r} -> {normalizar(x['ouvido'])[-1:]}" for x in sem_ultima)
