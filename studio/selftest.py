@@ -571,16 +571,49 @@ def run_self_test(argv=None) -> int:
 """, timeout=120)
                 _passo(result, "guia6_refazer", bool(redo.get("ok")), redo)
 
-                m4b = _run_js_step(window, "guia6_salvar_m4b", """
-  const pid = new URLSearchParams(location.search).get("id");
-  const j = await studio.post("/api/projects/" + encodeURIComponent(pid) + "/assemble",
-    JSON.stringify({video: false}), {"Content-Type": "application/json"});
-  const nome = (j.out || j.m4b || "").split(/[/\\\\]/).pop();
-  window.__absStep = {step: step, ok: !!(j.out || j.m4b), arquivo: nome};
+                m4b_js = _run_js_step(window, "guia6_salvar_m4b", """
+  const btn = document.getElementById("salvar");
+  if (!btn) throw new Error("sem botão #salvar");
+  btn.click();
+  for (let i = 0; i < 120; i++) {
+    const okEl = document.getElementById("ok");
+    const erEl = document.getElementById("err");
+    if (okEl && !okEl.hidden && /M4B salvo/i.test(okEl.textContent || "")) {
+      window.__absStep = {step: step, ok: true, msg: okEl.textContent};
+      return;
+    }
+    if (erEl && !erEl.hidden && (erEl.textContent || "").trim()) {
+      window.__absStep = {step: step, ok: false, err: erEl.textContent};
+      return;
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
+  window.__absStep = {step: step, ok: false, err: "timeout salvar M4B"};
 """, timeout=120)
-                _passo(result, "guia6_salvar_m4b", bool(m4b.get("ok")), m4b,
+                # Conferência no disco: o M4B tem de aparecer em ~/Downloads do HOME limpo (R32).
+                proj_m4b = next(
+                    (home / "projects" / pid / "audiobook").glob("*.m4b"), None
+                )
+                dl_dir = Path.home() / "Downloads"
+                salvos = list(dl_dir.glob("*.m4b")) if dl_dir.is_dir() else []
+                disk_ok = False
+                detalhe = {
+                    "js": m4b_js,
+                    "downloads": [p.name for p in salvos],
+                    "projeto": None,
+                }
+                if proj_m4b and proj_m4b.is_file():
+                    tamanho = proj_m4b.stat().st_size
+                    detalhe["projeto"] = {"nome": proj_m4b.name, "bytes": tamanho}
+                    for s in salvos:
+                        if s.stat().st_size == tamanho:
+                            disk_ok = True
+                            detalhe["salvo"] = {"nome": s.name, "bytes": s.stat().st_size}
+                            break
+                m4b_ok = bool(m4b_js.get("ok")) and disk_ok
+                _passo(result, "guia6_salvar_m4b", m4b_ok, detalhe,
                        _captura_janela(cap_dir / "06-m4b.png"))
-                result["guias"]["guia6"] = bool(seek.get("ok")) and bool(m4b.get("ok"))
+                result["guias"]["guia6"] = bool(seek.get("ok")) and m4b_ok
 
                 result["ok"] = (
                     result["getUserMedia"] == "presente"
