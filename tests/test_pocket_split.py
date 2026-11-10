@@ -101,7 +101,8 @@ def test_capitulo_de_referencia_sem_aviso_de_corte(caplog, tmp_path):
     print(f"\n{len(trechos)} trechos, {n_pedacos} pedaços, máximo {n_tokens_max} tokens por pedaço")
     assert avisos == []
     assert n_tokens_max <= TARGET_TOKENS
-    assert " ".join(e.split(" ".join(trechos))).split() == " ".join(trechos).split()
+    # sem diferenciar maiúsculas: palavras em caixa alta vão em minúsculas para o Pocket (T6)
+    assert " ".join(e.split(" ".join(trechos))).lower().split() == " ".join(trechos).lower().split()
 
 
 def test_palavras_em_maiusculas_vao_em_minusculas():
