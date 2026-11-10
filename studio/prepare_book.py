@@ -18,7 +18,7 @@ NS = {"c": "urn:oasis:names:tc:opendocument:xmlns:container", "o": "http://www.i
       "dc": "http://purl.org/dc/elements/1.1/", "n": "http://www.daisy.org/z3986/2005/ncx/",
       "x": "http://www.w3.org/1999/xhtml", "e": "http://www.idpf.org/2007/ops",
       "enc": "http://www.w3.org/2001/04/xmlenc#"}
-SKIP_TITLE = (r"^(capa|rosto|folha de rosto|sum[aá]rio|[ií]ndice|notas?|bibliografia|cr[eé]ditos|copyright|sobre o autor|"
+SKIP_TITLE = (r"^(capa|rosto|folha de rosto|sum[aá]rio|[ií]ndice|notas?(?: finais| e refer[eê]ncias)?$|bibliografia|cr[eé]ditos|copyright|sobre o autor|"
               r"agradecimentos|mapas?|[aá]rvores? geneal|caderno|cover|title page|contents|table of contents|index|notes|"
               r"bibliography|credits|acknowledg|about the author|also by|dedication|dedicat[oó]ria)")
 SKIP_CLASS = re.compile(r"rodape|footnote|endnote|nota")
@@ -317,31 +317,52 @@ def number_match(title):
     return (n, sub, bool(word)) if n else None
 
 
+def tame(s):
+    """Título todo em maiúsculas vira só com a inicial maiúscula ("PARTE II: A ORIGEM" -> "Parte II: a origem")."""
+    if sum(c.isalpha() for c in s) < 4 or s != s.upper():
+        return s
+    words = [w if w.strip(".,:;") and ROMAN.match(w.strip(".,:;")) else w.lower() for w in s.split(" ")]
+    return " ".join(words)[:1].upper() + " ".join(words)[1:]
+
+
+def roman_parts(entries):
+    """Livro que numera capítulos em arábico usa os números romanos para as partes ("I. Origem" > "1. A casa")."""
+    nums = [(e, number_match(e["title"])) for e in entries]
+    roman = [e for e, m in nums if m and not m[2] and re.match(r"^[IVXLCDM]+\b", e["title"])]
+    arabic = [e for e, m in nums if m and re.match(r"^\d", e["title"])]
+    return bool(roman) and len(arabic) >= len(roman) and max(e["depth"] for e in roman) <= min(e["depth"] for e in arabic)
+
+
 def chapter_titles(entries):
     """Título mostrado e título falado (antes de normalizar) de cada entrada, com o contexto de parte."""
     out, part = [], None   # part: (rótulo, profundidade)
+    romans_are_parts = roman_parts(entries)
     for e in entries:
         t = e["title"]
         pipe = re.match(r"^(\d{1,3}|[IVXLCDM]+)\s*\|\s*(.+)$", t)
         if pipe:
             t = pipe.group(2).strip()
         pm, nm = part_match(t), (None if pipe else number_match(t))
+        if nm and romans_are_parts and re.match(r"^[IVXLCDM]+\b", t) and not nm[2]:
+            pm, nm = (f"Parte {re.match(r'^[IVXLCDM]+', t).group(0)}", nm[0], nm[1]), None
+            t = pm[0] + (f": {tame(pm[2])}" if pm[2] else "")
         if pm:
+            pm = (pm[0], pm[1], tame(pm[2]))
             part = (pm[0], e["depth"])
             lead = pm[0] if pm[0].endswith(" parte") else f"{pm[0].split()[0]} {pm[1]}"
-            out.append((t, lead, pm[2]))
+            out.append((tame(t), lead, pm[2]))
             continue
         if part and (e["depth"] < part[1] or (e["depth"] == part[1] and not nm)):
             part = None
         if nm:
-            n, sub, _ = nm
+            n, sub = nm[0], tame(nm[1])
             if part:
                 title = f"{part[0]}, capítulo {n}" + (f": {sub}" if sub else "")
             else:
-                title = t if sub else f"Capítulo {n}"
+                title = tame(t) if sub else f"Capítulo {n}"
             out.append((title, f"Capítulo {n}", sub))
         else:
-            out.append((t, t.replace("|", ","), ""))
+            out.append((tame(t), tame(t).replace("|", ","), ""))
     return out
 
 
@@ -460,12 +481,13 @@ def build(epub, out, lang=None, skip_title=SKIP_TITLE, skip_files=(), min_body=5
         if re.search(skip_title, e["title"], re.I):
             continue
         n += 1
-        if not e["blocks"]:
+        if not any(ch.isalnum() for _, t in e["blocks"] for ch in t):
             continue   # capítulo sem texto (só imagem): sai do livro
         blocks = list(e["blocks"])
         while blocks and blocks[0][0][0] == "h" and (same_title(blocks[0][1], e["title"]) or same_title(blocks[0][1], title)):
             blocks.pop(0)
-        paras = [t if k == "p" or re.search(r"[.!?…:;]$", t) else t + "." for k, t in blocks]
+        paras = [t if k == "p" or re.search(r"[.!?…:;]$", t) else t + "." for k, t in blocks
+                 if any(ch.isalnum() for ch in t)]   # separadores como "* * *" não são lidos
         chapters.append({"id": f"{n:02d}", "title": title, "lead": lead, "sub": sub, "paras": paras})
 
     if not chapters:

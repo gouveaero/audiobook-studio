@@ -29,6 +29,7 @@ def roman_words(s, ordinal_ok):
 
 def normalize(t):
     t = t.replace("\xa0", " ").replace("’", "'").replace("[...]", "…").replace("[", "").replace("]", "")
+    t = re.sub(r"\b([ad])\.\s?C\.\s?[–-]\s?(?=\d)", r"\1.C. a ", t)   # 40 a.C.-10 d.C.
     t = re.sub(r"\ba\.\s?C\.", "antes de Cristo", t)
     t = re.sub(r"\bd\.\s?C\.", "depois de Cristo", t)
     # século XIII -> século treze
