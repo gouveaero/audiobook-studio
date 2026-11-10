@@ -119,3 +119,22 @@ def test_faixa_de_ritmo_calibrada_no_capitulo_de_referencia():
     12 a 19,5 refaz cerca de 6% dos pedaços."""
     from studio.engines.pocket import PocketEngine
     assert PocketEngine.rate_range == (12.0, 19.5)
+
+
+def test_carga_liga_o_preenchimento_de_frases_curtas(monkeypatch):
+    """Medido na T6: sem o preenchimento do próprio Pocket, "Guerra é paz" sai como "e é rapaz"."""
+    import sys, types
+    class Modelo:
+        sample_rate = 24000
+        pad_with_spaces_for_short_inputs = False
+        has_voice_cloning = False
+        @classmethod
+        def load_model(cls, language):
+            return cls()
+        def get_state_for_audio_prompt(self, fonte):
+            return {"fonte": fonte}
+    falso = types.ModuleType("pocket_tts"); falso.TTSModel = Modelo
+    monkeypatch.setitem(sys.modules, "pocket_tts", falso)
+    from studio.engines.pocket import PocketEngine
+    e = PocketEngine(); e.load({"model": "portuguese_24l", "name": "rafael"})
+    assert e.model.pad_with_spaces_for_short_inputs is True

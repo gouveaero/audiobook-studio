@@ -115,6 +115,8 @@ class PocketEngine(Engine):
         if self.model is None or self.model_name != name:
             from pocket_tts import TTSModel
             self.model = TTSModel.load_model(language=name)
+            # frases curtas ("Guerra é paz") saem truncadas sem o preenchimento com espaços do próprio Pocket (T6)
+            self.model.pad_with_spaces_for_short_inputs = True
             self.model_name = name
             self.sample_rate = self.model.sample_rate
         if voice.get("file"):
