@@ -388,10 +388,11 @@ def start_generate(pid: str, *, only: str = "", extra: dict | None = None) -> di
     env["HF_HUB_CACHE"] = str(app_home() / "hf" / "hub")
     env["HUGGINGFACE_HUB_CACHE"] = env["HF_HUB_CACHE"]
     # caffeinate fica em /usr/bin; garante PATH mínimo se o pai veio com PATH limpo.
+    # (não usar o nome `extra`: sombrearia o parâmetro extra= do job)
     path = env.get("PATH") or ""
-    for extra in ("/usr/bin", "/bin"):
-        if extra not in path.split(":"):
-            path = f"{path}:{extra}" if path else extra
+    for bin_dir in ("/usr/bin", "/bin"):
+        if bin_dir not in path.split(":"):
+            path = f"{path}:{bin_dir}" if path else bin_dir
     env["PATH"] = path
     log = open(p / "work" / "generate.log", "ab")
     cwd = str(ROOT)
