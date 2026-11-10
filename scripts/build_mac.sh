@@ -172,7 +172,11 @@ PY
 
 # --- autoteste (R43) ---
 echo "== self-test =="
-export AUDIOBOOK_STUDIO_HOME="${AUDIOBOOK_STUDIO_HOME:-$(mktemp -d -t abs-selfhome)}"
+# HOME limpo dedicado: evita herdar AUDIOBOOK_STUDIO_HOME/HOME de sessões anteriores.
+SELF_HOME="$(mktemp -d -t abs-selfhome)"
+export HOME="$SELF_HOME"
+export AUDIOBOOK_STUDIO_HOME="$SELF_HOME/Library/Application Support/Audiobook Studio"
+mkdir -p "$AUDIOBOOK_STUDIO_HOME"
 export AUDIOBOOK_FAKE_DOWNLOAD=1
 export AUDIOBOOK_PREVIEW_MOTOR="${AUDIOBOOK_PREVIEW_MOTOR:-studio.selftest_engine:SelftestEngine}"
 export FAKE_ENGINE_DELAY="${FAKE_ENGINE_DELAY:-0.05}"

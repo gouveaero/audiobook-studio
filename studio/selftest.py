@@ -187,9 +187,13 @@ true
 
 
 def _api(base: str, token: str, method: str, path: str, body: bytes | None = None, headers: dict | None = None):
+    from urllib.parse import urlparse
     h = dict(headers or {})
     if method not in ("GET", "HEAD"):
         h["X-Studio-Token"] = token
+    # Host explícito: o servidor exige 127.0.0.1:<porta> (R33).
+    host = urlparse(base).netloc
+    h.setdefault("Host", host)
     req = urllib.request.Request(f"{base}{path}", data=body, method=method, headers=h)
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
@@ -263,8 +267,15 @@ def run_self_test(argv=None) -> int:
         (proj / "config.json").write_text("{}", encoding="utf8")
         audio_url = f"{base}/api/projects/_selftest/file/chapters/01.m4a?token={token}"
 
+        started = {"v": False}
+        start_lock = threading.Lock()
+
         def fluxo(window):
             nonlocal result
+            with start_lock:
+                if started["v"]:
+                    return
+                started["v"] = True
             try:
                 # Smoke getUserMedia + Range + microfone (não bloqueia)
                 smoke = _run_js_step(window, "smoke_r43", f"""

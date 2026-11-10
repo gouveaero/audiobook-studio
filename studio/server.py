@@ -355,6 +355,10 @@ class H(SimpleHTTPRequestHandler):
                     return self.send_json(local_api.create_project_from_epub(self.body()))
                 except BookError as e:
                     return self.send_json({"error": erro_publico(str(e)), "code": e.code}, 400)
+                except FileNotFoundError as e:
+                    # não confundir com "projeto ausente" do GET (ex.: ffmpeg/capa)
+                    log_exception()
+                    return self.send_json({"error": erro_publico(str(e) or "Falha ao criar o livro.")}, 500)
             if p == "/api/hf-login":
                 data = json.loads(self.body() or b"{}")
                 try:
