@@ -257,11 +257,15 @@ def project_state(pid: str) -> dict:
 
 
 def _flagged_from_progress(p: Path) -> list[dict]:
-    """Trechos marcados em work/progress.jsonl (para a tela final / refazer)."""
+    """Trechos marcados em work/progress.jsonl (para a tela final / refazer).
+
+    Vale o último evento `done` de cada capítulo (mesmo com flagged vazio).
+    Eventos `flagged` isolados só contam até o próximo `done` daquele capítulo.
+    """
     path = p / "work" / "progress.jsonl"
     if not path.is_file():
         return []
-    out = []
+    by_ch: dict[str, set[int]] = {}
     try:
         for line in path.read_text(encoding="utf8").splitlines():
             if not line.strip():
@@ -270,13 +274,25 @@ def _flagged_from_progress(p: Path) -> list[dict]:
                 ev = json.loads(line)
             except ValueError:
                 continue
-            if ev.get("kind") == "flagged" or (ev.get("kind") == "done" and ev.get("flagged")):
-                ch = ev.get("ch") or ev.get("chapter")
-                for k in (ev.get("flagged") or ([ev.get("chunk")] if ev.get("kind") == "flagged" else [])):
-                    if ch is not None and k is not None:
-                        out.append({"chapter": str(ch), "chunk": int(k)})
+            ch = ev.get("ch") or ev.get("chapter")
+            if ch is None:
+                continue
+            ch = str(ch)
+            kind = ev.get("kind")
+            if kind == "done" and "flagged" in ev:
+                by_ch[ch] = {int(k) for k in (ev.get("flagged") or []) if k is not None}
+            elif kind == "flagged":
+                k = ev.get("chunk")
+                if k is not None:
+                    by_ch.setdefault(ch, set()).add(int(k))
+            elif kind == "done" and ev.get("flagged"):
+                by_ch[ch] = {int(k) for k in ev["flagged"] if k is not None}
     except OSError:
         pass
+    out = []
+    for ch, ks in by_ch.items():
+        for k in sorted(ks):
+            out.append({"chapter": ch, "chunk": int(k)})
     return out
 
 

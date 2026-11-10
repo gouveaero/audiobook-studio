@@ -123,6 +123,47 @@ async function refazer(chapter, chunk, btn) {
 }
 
 $("inicio").onclick = () => { location.href = studio.href("/home.html"); };
+
+function nomeArquivo(caminho) {
+  const s = String(caminho || "");
+  const i = Math.max(s.lastIndexOf("/"), s.lastIndexOf("\\"));
+  return i >= 0 ? s.slice(i + 1) : (s || "audiolivro.m4b");
+}
+function nomePasta(caminho) {
+  const s = String(caminho || "").replace(/[/\\]+$/, "");
+  const i = Math.max(s.lastIndexOf("/"), s.lastIndexOf("\\"));
+  if (i < 0) return "Downloads";
+  const parent = s.slice(0, i);
+  const j = Math.max(parent.lastIndexOf("/"), parent.lastIndexOf("\\"));
+  return j >= 0 ? parent.slice(j + 1) : parent || "Downloads";
+}
+
+async function baixarM4b(relOuAbs, nome) {
+  const rel = (relOuAbs || "").replace(/^.*\/(audiobook\/)/, "audiobook/");
+  const url = media(rel.indexOf("audiobook/") === 0 ? rel : ("audiobook/" + nome));
+  const r = await studio.fetch(url);
+  if (!r.ok) throw new Error("Não foi possível ler o M4B.");
+  const blob = await r.blob();
+  if (window.showSaveFilePicker) {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: nome,
+      types: [{ description: "Audiolivro", accept: { "audio/mp4": [".m4b", ".m4a"] } }]
+    });
+    const w = await handle.createWritable();
+    await w.write(blob);
+    await w.close();
+    return { nome: handle.name || nome, pasta: "pasta escolhida" };
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = nome;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  return { nome: nome, pasta: "Downloads" };
+}
+
 $("salvar").onclick = async () => {
   err(""); ok("");
   try {
@@ -131,8 +172,12 @@ $("salvar").onclick = async () => {
       JSON.stringify({ video: false }),
       { "Content-Type": "application/json" }
     );
-    ok(j.out ? ("M4B salvo: " + j.out) : "M4B montado.");
+    const caminho = j.out || (j.m4b) || "";
+    const nome = nomeArquivo(caminho);
+    const salvo = await baixarM4b(caminho, nome);
+    ok("M4B salvo: " + salvo.nome + " na pasta " + (salvo.pasta || nomePasta(caminho)) + ".");
   } catch (ex) {
+    if (ex && ex.name === "AbortError") return;
     err(ex.message || "Não foi possível salvar o M4B.");
   }
 };
