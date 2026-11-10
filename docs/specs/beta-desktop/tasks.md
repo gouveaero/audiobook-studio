@@ -40,8 +40,8 @@ Marcação de testes: sem marca, rodam sem modelo e em segundos (motor falso, EP
 
 ## Instalador e publicação preparada
 
-- [ ] **T20.** `scripts/build_voice_pack.py`, `scripts/build_mac.sh`, `ffmpeg` embutido, microfone e autoteste na janela real. (R22, R40, R43)
-- [ ] **T21.** Livro curto do início ao fim com o app empacotado em ambiente limpo. (R41, R42)
+- [x] **T20.** `scripts/build_voice_pack.py`, `scripts/build_mac.sh`, `ffmpeg` embutido, microfone e autoteste na janela real. (R22, R40, R43)
+- [x] **T21.** Livro curto do início ao fim com o app empacotado em ambiente limpo. (R41, R42)
 - [x] **T22.** Aviso de versão nova. (R44)
 - [x] **T23.** `LICENSE`, `THIRD_PARTY.md`, tela "Sobre", README e configuração de doação e Android. (R45 a R48)
 - [x] **T24.** Teste contra dados pessoais e destinos de rede. (R37, R49)

@@ -33,6 +33,7 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 | R37, R49 | T24 | `tests/test_rede.py` e `tests/test_privacidade.py` na camada base, e `test_pacote_app_sem_dados_pessoais` (`@pytest.mark.package`) rodado pelo Maestro no app construído de um clone limpo | passaram: só Hugging Face, GitHub Releases e os endereços opcionais de `brand.py` como destinos; chamadas de rede só nos pontos previstos; nenhum termo proibido nos arquivos, nos commits novos nem dentro do `.app` |
 | R40, R42 | T20 (sem marcar) | `scripts/build_mac.sh` rodado pelo Maestro num clone limpo da `beta-desktop` | gerou o `.dmg`: 318.734.663 bytes (0,297 GB), abaixo de 1,5 GB. `ffmpeg` 8.1.2 LGPL com SHA-256 conferida, ícone, assinatura ad hoc, pacote de voz incluído, modelo fora |
 | R41, R43 | T20, T21 (sem marcar) | `pytest -m package` rodado pelo Maestro no app do clone limpo | 2 passaram (`NSMicrophoneUsageDescription`; dados pessoais no pacote) e **2 falharam**: o autoteste da janela real para em "falha ao criar projeto", e a geração do livro curto em ambiente limpo termina em erro depois de o download real passar. Devolvido à Interface |
+| R40 a R43 | T20, T21 | `scripts/build_mac.sh` num clone limpo da `beta-desktop` (commit ee98c1c) e `VERIFY_LAYERS=package scripts/verify_beta.sh` no app desse clone, rodados pelo Maestro | passaram, depois das correções da Interface (scipy no pacote, voz do pacote copiada para o projeto, autoteste com passos isolados e só em 127.0.0.1). `.dmg`: 338.847.123 bytes (0,316 GB). Autoteste na janela real: `getUserMedia` presente, áudio com `Range`, guias 2, 4, 5 e 6 aprovados; o build agora falha se o autoteste falhar. Camada de pacote: 4 passaram em 71 s, com `HOME` vazio, `PATH=/usr/bin:/bin`, download real do modelo e livro curto até o M4B com capítulos e capa. Não verificado: instalar pelo `.dmg` em outro Mac e o aviso do Gatekeeper (conferência humana) |
 
 ## Decisões de quem constrói
 
@@ -225,4 +226,28 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 - Commit: 3bbb37f (com alterações não commitadas)
 - Camadas pedidas: base
 - Camada `base`: passou. 222 passed, 11 deselected in 80.14s (0:01:20)
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 17:27
+- Commit: 855c43d (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: FALHOU (código 1). 1 failed, 223 passed, 11 deselected in 66.33s (0:01:06)
+- Resultado: FALHOU
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 17:30
+- Commit: ee98c1c (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 226 passed, 11 deselected in 66.01s (0:01:06)
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 17:34
+- Commit: ee98c1c
+- Camadas pedidas: package
+- Camada `package`: passou. 4 passed, 233 deselected in 71.05s (0:01:11)
 - Resultado: passou
