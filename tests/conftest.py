@@ -1,6 +1,7 @@
 """Apoio comum dos testes: raiz do repositório no sys.path e projetos sintéticos."""
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -26,6 +27,8 @@ def make_project(raiz: Path, chapters, config=None, book_extra=None) -> Path:
     (P / "book.json").write_text(json.dumps(book, ensure_ascii=False), encoding="utf8")
     if config is not None:
         (P / "config.json").write_text(json.dumps(config, ensure_ascii=False), encoding="utf8")
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=0x334455:s=128x128",
+                    "-frames:v", "1", str(P / "cover.jpg")], check=True)  # a montagem automática precisa da capa
     return P
 
 

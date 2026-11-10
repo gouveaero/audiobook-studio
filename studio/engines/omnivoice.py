@@ -7,6 +7,7 @@ from . import Engine
 
 class OmniVoiceEngine(Engine):
     id = "omnivoice"
+    model_name = "k2-fsa/OmniVoice"
     sample_rate = 24000
     chars_per_second = 13.5
     rate_range = (10.0, 17.0)

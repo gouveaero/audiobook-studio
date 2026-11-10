@@ -77,6 +77,7 @@ CLONAGEM_BLOQUEADA = ("Para usar a sua voz, entre na sua conta do Hugging Face e
 
 class PocketEngine(Engine):
     id = "pocket"
+    model_name = "portuguese_24l"
     sample_rate = 24000
     chars_per_second = 16.6
     rate_range = (10.0, 22.0)  # provisória; calibrada na T6

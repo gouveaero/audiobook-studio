@@ -12,12 +12,15 @@ Estrutura do projeto:
                             trava de processo morto é liberada na retomada)
   chapters/NN.m4a           saída; só aparece com o arquivo completo (escrita em .tmp e renomeada)
   work/progress.jsonl       eventos: retry, done, flagged
+  work/job.json             a tarefa: pid, status (gerando, pausado, cancelado, montando, pronto, concluido, erro), motor,
+                            model, started, chars_total, chars_done, chars_per_second (medida), eta_seconds, error, m4b
+  work/pause, work/cancel   pedidos da interface, lidos entre pedaços; cancelar não apaga o que está pronto
 
 Checagem de qualidade: cada pedaço tem o ritmo (caracteres por segundo) conferido na faixa do motor. Fora dela é
 provável corte ou repetição; o pedaço é regenerado com outra semente (até 4 tentativas) e, se falhar, o trecho fica
 marcado em `flagged`.
 """
-import argparse, json, os, subprocess, sys, time, warnings
+import argparse, json, os, shutil, subprocess, sys, time, traceback, warnings
 
 import numpy as np
 
@@ -26,6 +29,8 @@ from studio.engines import engine_name, load_engine
 from studio.wavio import read_wav, write_wav
 
 PIECE_PAUSE = 0.25   # segundos entre pedaços de um mesmo trecho
+DISK_PER_HOUR = 250_000_000  # bytes por hora de áudio prevista (WAV de trecho em 16 bits + saídas)
+DISK_MARGIN = 500_000_000
 MIN_CHECK_CHARS = 60  # pedaços mais curtos não têm o ritmo conferido
 MAX_ATTEMPTS = 4
 
@@ -97,6 +102,48 @@ def voice_for(P, book):
             "ref_txt": open(ref_txt, encoding="utf8").read().strip() if os.path.exists(ref_txt) else ""}
 
 
+def espaco_necessario(chars, chars_per_second):
+    horas = chars / float(chars_per_second) / 3600.0
+    return int(DISK_PER_HOUR * horas + DISK_MARGIN)
+
+
+def espaco_livre(path):
+    return shutil.disk_usage(path).free
+
+
+class Cancelado(Exception):
+    pass
+
+
+class Tarefa:
+    """work/job.json. Acrescenta ao que a interface já escreveu (pid, only, redo...) em vez de apagar."""
+
+    def __init__(self, P):
+        self.path = f"{P}/work/job.json"
+        try:
+            self.data = json.load(open(self.path, encoding="utf8"))
+        except (OSError, ValueError):
+            self.data = {}
+
+    def update(self, **kw):
+        try:
+            self.data = json.load(open(self.path, encoding="utf8"))
+        except (OSError, ValueError):
+            pass
+        self.data.update(kw)
+        self.data["updated"] = time.time()
+        tmp = f"{self.path}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf8") as f:
+            json.dump(self.data, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, self.path)
+        return self.data
+
+
+def chars_prontos(P, chapters):
+    return sum(len(t) for c in chapters for k, t in enumerate(c["chunks"])
+               if os.path.exists(f"{P}/chapters/{c['id']}.m4a") or os.path.exists(f"{P}/work/chunks/{c['id']}_{k:04d}.wav"))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--project", required=True)
@@ -111,38 +158,124 @@ def main(argv=None):
     for d in ("work/chunks", "work/locks", "chapters"):
         os.makedirs(f"{P}/{d}", exist_ok=True)
     book = json.load(open(f"{P}/book.json"))
-    chapters = [c for c in book["chapters"] if c.get("include", True)]
+    incluidos = [c for c in book["chapters"] if c.get("include", True)]
+    chapters = incluidos
     if a.only:
         keep = set(a.only.split(","))
         chapters = [c for c in chapters if c["id"] in keep]
     motor = a.motor or engine_name_for(P)
     device = pick_device(a.device) if motor in ("omnivoice", "pocket") else a.device
+    chefe = not a.worker_child
+    tarefa = Tarefa(P)
+    total = sum(len(t) for c in chapters for t in c["chunks"])
 
-    if not a.worker_child:  # processo pai: abre N filhos que dividem a fila por trava
+    if chefe:
+        try:
+            cfg = json.load(open(f"{P}/config.json"))
+        except (OSError, ValueError):
+            cfg = {}
+        engine_cls = type(load_engine(motor, device=device, steps=a.steps))
+        modelo = cfg.get("model") or engine_cls.model_name or engine_cls.id
+        feitos = chars_prontos(P, chapters)
+        tarefa.update(pid=os.getpid(), status="gerando", motor=motor, model=modelo,
+                      started=tarefa.data.get("started") or time.time(), chars_total=total, chars_done=feitos,
+                      chars_per_second=None, eta_seconds=None if feitos < total else 0, error=None)
+        precisa, livre = espaco_necessario(total - feitos, engine_cls.chars_per_second), espaco_livre(P)
+        if livre < precisa:
+            tarefa.update(status="erro", error=f"Sem espaço em disco: a geração precisa de cerca de {precisa // 1_000_000} MB "
+                                                f"livres e há {livre // 1_000_000} MB. Libere espaço e tente de novo.")
+            sys.exit(2)
+        for f in ("pause", "cancel"):
+            pass  # a interface apaga os pedidos antigos antes de iniciar; aqui só lemos
         n = a.workers or (3 if device == "cuda" else 1)
-        if n > 1:
+        if n > 1:  # processo pai: abre N filhos que dividem a fila por trava
             kids = [subprocess.Popen([sys.executable, "-m", "studio.generate", "--project", P, "--only", a.only,
                                       "--device", device, "--steps", str(a.steps), "--motor", motor, "--worker-child"])
                     for _ in range(n)]
-            sys.exit(max(k.wait() for k in kids))
+            code = max(k.wait() for k in kids)
+            if code:
+                tarefa.update(status="erro", error="A geração falhou num dos processos. Veja work/generate.log.")
+                sys.exit(code)
+            finalizar(P, tarefa, incluidos)
+            return
 
+    caf = subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())]) if chefe and shutil.which("caffeinate") else None
+    estado = {"trava": None}  # trava do capítulo em andamento, para soltar se a geração parar
+    try:
+        rodar(P, a, book, chapters, motor, device, tarefa, total, estado)
+    except Cancelado:
+        tarefa.update(status="cancelado")
+        return
+    except SystemExit:
+        raise
+    except Exception as e:
+        if estado["trava"] and os.path.exists(estado["trava"]):
+            os.remove(estado["trava"])
+        traceback.print_exc()
+        tarefa.update(status="erro", error=f"A geração falhou ({type(e).__name__}). O detalhe está em work/generate.log.")
+        sys.exit(1)
+    finally:
+        if caf is not None:
+            caf.terminate()
+    if chefe:
+        finalizar(P, tarefa, incluidos)
+
+
+def finalizar(P, tarefa, incluidos):
+    """Com todos os capítulos incluídos prontos, monta o M4B; senão, a tarefa só termina."""
+    if not all(os.path.exists(f"{P}/chapters/{c['id']}.m4a") for c in incluidos):
+        tarefa.update(status="concluido", eta_seconds=0)
+        return
+    from studio.assemble import montar_projeto
+    tarefa.update(status="montando", eta_seconds=0)
+    try:
+        m4b = montar_projeto(P, video=False)
+    except Exception as e:
+        traceback.print_exc()
+        tarefa.update(status="erro", error=f"A montagem do audiolivro falhou ({type(e).__name__}). O detalhe está em work/generate.log.")
+        sys.exit(1)
+    tarefa.update(status="pronto", m4b=str(m4b), eta_seconds=0)
+
+
+def rodar(P, a, book, chapters, motor, device, tarefa, total, estado):
+    """Gera os capítulos da fila. `estado["trava"]` guarda a trava do capítulo em andamento."""
     warnings.filterwarnings("ignore")
     engine = load_engine(motor, device=device, steps=a.steps)
     engine.load(voice_for(P, book))
     sr = engine.sample_rate
     lo, hi = engine.rate_range
+    medida = {"chars": 0, "secs": 0.0}      # velocidade medida nesta tarefa: só o que foi gerado agora
+    progresso = {"done": chars_prontos(P, chapters)}
 
     def log(**kw):
         with open(f"{P}/work/progress.jsonl", "a") as f:
             f.write(json.dumps(kw, ensure_ascii=False) + "\n")
 
+    def controle():
+        """Lido entre pedaços: pausa enquanto work/pause existir; work/cancel encerra sem apagar o pronto."""
+        pausado = False
+        while os.path.exists(f"{P}/work/pause") and not os.path.exists(f"{P}/work/cancel"):
+            if not pausado:
+                pausado = True; tarefa.update(status="pausado")
+            time.sleep(0.5)
+        if pausado:
+            tarefa.update(status="gerando")
+        if os.path.exists(f"{P}/work/cancel"):
+            if estado["trava"] and os.path.exists(estado["trava"]):
+                os.remove(estado["trava"])
+            raise Cancelado()
+
     def synth(text):
+        t0 = time.time()
         for attempt in range(MAX_ATTEMPTS):
             w = np.asarray(engine.synth(text, attempt), dtype=np.float32).reshape(-1)
             rate = len(text) / (len(w) / sr)
             if len(text) < MIN_CHECK_CHARS or lo <= rate <= hi:
-                return w, rate, attempt
-        return w, rate, -1
+                break
+        else:
+            attempt = -1
+        medida["chars"] += len(text); medida["secs"] += time.time() - t0
+        return w, rate, attempt
 
     def synth_chunk(c, k, txt):
         """Gera o trecho k (em pedaços, se o motor cortar). Devolve (ritmo, tentativa) da pior parte."""
@@ -157,6 +290,7 @@ def main(argv=None):
             pf = f"{P}/work/chunks/{c['id']}_{k:04d}.p{s:02d}.wav"
             lido = read_wav_ou_descarta(pf) if os.path.exists(pf) else None
             if lido is None:
+                controle()
                 w, rate, att = synth(piece)
                 write_wav_atomic(pf, w, sr)
                 if att != 0 and (worst[0] is None or att == -1 or (worst[1] != -1 and att > worst[1])):
@@ -183,7 +317,15 @@ def main(argv=None):
         for velho in os.listdir(f"{P}/work/chunks"):  # .tmp de um processo morto neste capítulo
             if velho.startswith(f"{c['id']}_") and velho.endswith(".tmp"):
                 os.remove(f"{P}/work/chunks/{velho}")
+        estado["trava"] = lock
         return True
+
+    def avancar(n_chars):
+        progresso["done"] += n_chars
+        cps = medida["chars"] / medida["secs"] if medida["secs"] > 0 and medida["chars"] else None
+        falta = max(0, total - progresso["done"])
+        tarefa.update(chars_done=progresso["done"], chars_per_second=round(cps, 2) if cps else None,
+                      eta_seconds=0 if falta == 0 else (round(falta / cps, 1) if cps else None))
 
     t0 = time.time()
     usar_eq = eq_do_projeto(P)
@@ -198,14 +340,17 @@ def main(argv=None):
             f = f"{P}/work/chunks/{c['id']}_{k:04d}.wav"
             lido = read_wav_ou_descarta(f) if os.path.exists(f) else None
             if lido is None:
+                controle()
                 rate, att = synth_chunk(c, k, txt)
                 if att != 0:
                     log(kind="retry", ch=c["id"], k=k, rate=round(rate, 1), attempt=att)
                 if att == -1:
                     flagged.append(k)
                 lido = read_wav(f)
+                avancar(len(txt))
             w, wsr = lido
             parts.append(w)
+        controle()
         lead = silencio_antes_do_titulo(livro, por_id[c["id"]])
         audio, _ = montar_capitulo(
             parts, c["pauses"], c.get("head") or [], wsr, eq=usar_eq, silencio_antes=lead,
@@ -215,6 +360,7 @@ def main(argv=None):
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", wav, "-ac", "1", "-b:a", "64k", tmp], check=True)
         os.remove(wav)
         os.rename(tmp, out)  # só existe como NN.m4a quando está completo
+        estado["trava"] = None
         log(kind="done", ch=c["id"], title=c["title"], secs=round(time.time() - t0), flagged=flagged)
 
 

@@ -16,6 +16,7 @@ DEFAULT_ENGINE = "omnivoice"
 
 class Engine:
     id: str = ""
+    model_name: str = ""                  # nome do modelo, para work/job.json
     sample_rate: int = 24000
     chars_per_second: float = 15.0        # usado no painel e nas estimativas
     rate_range: tuple = (10.0, 17.0)      # faixa aceitável de caracteres por segundo

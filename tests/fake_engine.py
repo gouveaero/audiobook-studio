@@ -6,6 +6,7 @@ Como o generate.py roda em outro processo nos testes de retomada, a configuraç�
   FAKE_ENGINE_MAX_CHARS   corta o trecho em pedaços de até N caracteres (padrão: sem corte)
   FAKE_ENGINE_DELAY       segundos de espera por síntese (simula a lentidão do modelo)
   FAKE_ENGINE_LOG         arquivo onde cada síntese é registrada (uma linha por chamada)
+  FAKE_ENGINE_FAIL        texto que, se aparecer no trecho, faz a síntese falhar com RuntimeError
 """
 import os
 import time
@@ -17,6 +18,7 @@ from studio.engines import Engine
 
 class FakeEngine(Engine):
     id = "fake"
+    model_name = "fake"
     sample_rate = 16000
     chars_per_second = 15.0
     rate_range = (10.0, 17.0)
@@ -44,6 +46,9 @@ class FakeEngine(Engine):
         fix = os.environ.get("FAKE_ENGINE_FIX_AFTER", "")
         if fix != "" and attempt >= int(fix):
             rate = self.chars_per_second
+        falha = os.environ.get("FAKE_ENGINE_FAIL", "")
+        if falha and falha in text:
+            raise RuntimeError(f"motor falso: falha pedida em {text!r}")
         delay = float(os.environ.get("FAKE_ENGINE_DELAY", "0") or 0)
         if delay:
             time.sleep(delay)
