@@ -11,21 +11,22 @@ Passos:
 3. Inspecionar `voice.html` -> esperado: todo o texto visível em português do Brasil, zero travessões, sem texto cortado e todos os botões com ação.
 4. Inspecionar `dashboard.html` -> esperado: todo o texto visível (incluindo o quadro de registro de eventos `#log`) em português do Brasil, sem jargão ou comandos em inglês (`synth`, `clone_voice --ref ... --chunk ...`), zero travessões e sem texto cortado.
 5. Inspecionar `ready.html` -> esperado: todo o texto visível em português do Brasil, zero travessões, sem caminhos técnicos de máquina e botões funcionais.
+6. Inspecionar `about.html` ("Sobre") e o quadro de primeiro uso em `home.html` -> esperado: termos de uso, privacidade e licenças em português, sem travessão, e botões funcionando.
 
 Capturas:
-- Passo 4: `tests/ui/capturas/08-texto-dashboard-log.png`
+- Passo 1 (`home.html`): `tests/ui/capturas/08-texto-home-botoes.png`
+- Passo 4 (`dashboard.html`): `tests/ui/capturas/08-texto-dashboard-log.png`
+- Passo 6 (`about.html`): `tests/ui/capturas/08-texto-sobre.png`
 
 Critério de aprovação:
 - Nenhum caractere de travessão (`\u2014` ou `\u2013`) em `ui/`.
 - Nenhuma mensagem ou painel visível em inglês ou com flags de linha de comando/nomes técnicos (R38, R39).
-- Nenhum texto cortado indevidamente nem botão sem ação.
+- Nenhum texto cortado indevidamente nem botão sem ação (R39, R48).
 
-Resultado: reprovado.
-- Travessão (R39): Aprovado em todos os arquivos de `ui/` (`home.html`, `review.html`, `voice.html`, `dashboard.html`, `ready.html`, `setup.html`, `studio.js`, `fonts.css`): zero ocorrências de `—` (`\u2014`) ou `–` (`\u2013`).
-- Passo 1 (`home.html`), Passo 2 (`review.html`) e Passo 3 (`voice.html`): Textos em português do Brasil e botões com ação. (Observação menor em `home.html` linha 59: exibe o slug interno `p.id` ao lado da autora, ex.: `Autora Sintética · cronicas-da-praca`).
-- Passo 4 (`dashboard.html` - REPROVADO por inglês e nomes técnicos na tela, R38 e R39):
-  1. Termos em inglês e sintaxe de linha de comando no quadro `#log` (`ui/dashboard.html` linhas 228 e 230): imprime `synth cloud ch02 » ...` e `clone_voice --ref voz.wav --chunk 1432` na tela (`tests/ui/capturas/08-texto-dashboard-log.png`).
-  2. Nome de exceção e caminho técnico de arquivo de log em `#dashErr` (R38): `studio/generate.py` (linhas 246 e 266) grava `(RuntimeError)` e `work/generate.log` em `work/job.json`, e `studio/local_api.py` (`project_state`, linha 241) devolve `job.get("error")` sem passar por `erro_publico()`, exibindo `A montagem do audiolivro falhou (RuntimeError). O detalhe está em work/generate.log.` em `#dashErr` (visto na captura `tests/ui/capturas/02-resultado-capitulos.png` antes da troca da capa).
-  3. Subtítulo `#tSub` (`ui/dashboard.html` linha 121 + `studio/server.py` linha 298): exibe `Autora Sintética · voz de voz · pocket` (repetição `voz de voz` quando `cfg["voz"]` não foi gravado em `config.json` por `attach_voice_to_project`, mais o identificador interno `pocket`).
-- Passo 5 (`ready.html` - REPROVADO por caminho técnico na tela, R38):
-  - `ui/ready.html` (linha 134) exibe o caminho absoluto completo do arquivo no disco (`M4B salvo: /.../audiobook/...m4b`) ao clicar em "Salvar M4B" (`tests/ui/capturas/06-pronto-salvar-m4b.png`).
+Resultado: reprovado na 2ª rodada (apenas 1 item restante em `home.html`).
+- Histórico (1ª rodada): reprovado por inglês/flags no `#log` de `dashboard.html`, `(RuntimeError)` e `work/generate.log` em `#dashErr`, `"voz de voz · pocket"` em `#tSub` e caminho absoluto em `ready.html`.
+- 2ª rodada:
+  - Correções confirmadas: zero travessões (`—` ou `–`) em todos os arquivos de `ui/` (incluindo `about.html`); `#log` de `dashboard.html` agora 100% em português (`"geração local pronta para começar"`, `"ritmo local 0,0×"`, `"gerando capítulo 01: ..."`, `tests/ui/capturas/08-texto-dashboard-log.png`); `#tSub` limpo (`"Autora Sintética · voz de Teste"`); `#dashErr` sanitizado por `_erro_publico`; `home.html` sem slug `p.id` nos cartões; `ready.html` sem caminho absoluto; `about.html` (`"Sobre"`, `tests/ui/capturas/08-texto-sobre.png`) em português e com botão `"Início"` funcional.
+  - Passo 1 (`home.html` - REPROVADO por botões visíveis sem ação / R48):
+    - Esperado: quando `DONATION_URL` e `ANDROID_WAITLIST_URL` estão vazios em `studio/brand.py`, os botões `"Doar"` (`#doar`) e `"Lista de espera Android"` (`#android`) não devem aparecer na tela (R48), e nenhum botão visível pode ficar sem ação.
+    - Obtido: em `ui/home.html` (linha 17), a regra CSS `button, label.btn, a.btn { ... display: inline-block; }` sobrescreve o estilo padrão do navegador para o atributo HTML `hidden` (`[hidden] { display: none }`). Mesmo com `doar.hidden = true` e `android.hidden = true` e sem atributo `href` (`href = null`), ambos os botões `"Doar"` (`74x43 px`) e `"Lista de espera Android"` (`212x43 px`) aparecem visíveis na tela inicial e clicar neles não faz nada (`tests/ui/capturas/08-texto-home-botoes.png` e `tests/ui/capturas/01-primeiro-uso-home.png`). Basta adicionar `[hidden] { display: none !important; }` no CSS de `ui/home.html`.
