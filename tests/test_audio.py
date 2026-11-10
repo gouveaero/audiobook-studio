@@ -42,13 +42,19 @@ def silêncios(path, ruido="-40dB", min_dur=0.2):
     )
     starts = [float(x) for x in re.findall(r"silence_start:\s*([-\d.]+)", r.stderr)]
     durs = [float(x) for x in re.findall(r"silence_duration:\s*([-\d.]+)", r.stderr)]
-    # silencedetect omite o último silence_end se o arquivo termina em silêncio
     if len(durs) == len(starts) - 1:
         durs.append(ffprobe_dur(path) - starts[-1])
     return list(zip(starts, durs))
 
 
-def projeto_com_titulos(tmp_path, eq=True):
+def rms_db(samples):
+    s = np.asarray(samples, dtype=np.float32).reshape(-1)
+    e = float(np.mean(s ** 2))
+    assert e > 0, "bloco sem sinal"
+    return 10.0 * np.log10(e)
+
+
+def projeto_com_titulos(tmp_path, eq=True, pauses=None):
     """Dois capítulos com head[0]; textos longos o bastante para o silêncio sobressair."""
     P = make_project(tmp_path, [
         ("01", "Capítulo um", [
@@ -63,7 +69,7 @@ def projeto_com_titulos(tmp_path, eq=True):
     book = json.loads((P / "book.json").read_text(encoding="utf8"))
     for c in book["chapters"]:
         c["head"] = [0]
-        c["pauses"] = [0.7, 0.7]  # pausas do livro; a virada usa as constantes de design
+        c["pauses"] = list(pauses) if pauses is not None else [0.7, 0.7]
     (P / "book.json").write_text(json.dumps(book, ensure_ascii=False), encoding="utf8")
     return P
 
@@ -95,86 +101,195 @@ def test_volume_do_capitulo_em_lufs_e_pico(tmp_path, ambiente_fake):
 
 
 def test_virada_de_capitulo_no_m4b(tmp_path, ambiente_fake):
-    """R20: 1,5 s antes do título e 1 s depois (±0,15), medidos no M4B; título mais lento e alto."""
+    """R20: 1,5 s antes do título e 1 s depois (±0,15), medidos no M4B; título mais lento."""
     from studio import audio as A
 
     P = projeto_com_titulos(tmp_path, eq=False)
     gerar(P)
     m4b = montar_m4b(P, tmp_path / "saida")
 
-    # Duração do título gerado (sem tratamento) vs no capítulo: atempo=0,92 alonga ~8%.
     from studio.wavio import read_wav
     titulo_wav, sr = read_wav(str(P / "work" / "chunks" / "01_0000.wav"))
-    dur_titulo_bruto = len(titulo_wav) / sr
-    esperado_titulo = dur_titulo_bruto / A.TITLE_ATEMPO
+    esperado_titulo = (len(titulo_wav) / sr) / A.TITLE_ATEMPO
 
     gaps = silêncios(m4b)
-    # No M4B: silêncio inicial (antes do 1º título) ≈ 1,5 s; depois do 1º título ≈ 1,0 s;
-    # entre fim do corpo do cap.1 e título do cap.2 o total antes do 2º título ≈ 1,5 s.
     assert gaps, "nenhum silêncio detectado no M4B"
     assert abs(gaps[0][1] - A.SILENCE_BEFORE_TITLE) <= 0.15
-
-    # Segundo silêncio do primeiro capítulo: depois do título
     assert abs(gaps[1][1] - A.SILENCE_AFTER_TITLE) <= 0.15
-
-    # Silêncio imediatamente antes do título do capítulo 2 (último gap entre falas do cap.1 e título do 2)
-    # Estrutura: [1.5 sil][título1][1.0 sil][corpo1][trailing][leading][título2]...
-    # O gap antes do título 2 é gaps[2] se o corpo não tiver silêncio interno (tom contínuo do fake).
     assert abs(gaps[2][1] - A.SILENCE_BEFORE_TITLE) <= 0.15
 
-    # Título mais lento: o bloco sonoro após o primeiro silêncio dura ~esperado_titulo
     inicio_titulo = gaps[0][0] + gaps[0][1]
     fim_titulo = gaps[1][0]
     assert abs((fim_titulo - inicio_titulo) - esperado_titulo) <= 0.15
 
 
-def test_eq_sem_gerar_voz_de_novo(tmp_path, ambiente_fake):
-    """R21: EQ conforme a regra; juntar de novo não chama o motor."""
+def test_virada_independe_da_ordem_de_geracao(tmp_path, ambiente_fake):
+    """R20: silêncio antes do título vem do book.json, não da ordem de execução."""
+    from studio import audio as A
+
+    P = projeto_com_titulos(tmp_path, eq=False, pauses=[0.7, 0.7])
+    gerar(P, "--only", "02")
+    gerar(P, "--only", "01")
+    m4b = montar_m4b(P, tmp_path / "saida-ordem")
+    gaps = silêncios(m4b)
+    assert len(gaps) >= 3, gaps
+    # gaps[2] = silêncio total antes do título do capítulo 02 (trailing do 01 + leading do 02)
+    assert abs(gaps[2][1] - A.SILENCE_BEFORE_TITLE) <= 0.15, gaps
+
+
+def test_titulo_fica_2_5_db_mais_alto_que_o_corpo(tmp_path, ambiente_fake):
+    """R20: no capítulo final, o bloco do título fica 2,5 dB (±0,5) acima do corpo."""
     from studio import audio as A
     from studio.wavio import read_wav, write_wav
 
+    P = projeto_com_titulos(tmp_path, eq=False)
+    # Amplitude baixa o bastante para o alimiter não comprimir o título após +2,5 dB.
+    (P / "work" / "chunks").mkdir(parents=True)
+    sr = 16000
+    book = json.loads((P / "book.json").read_text(encoding="utf8"))
+    cap = book["chapters"][0]
+    for k, txt in enumerate(cap["chunks"]):
+        n = max(sr, int(round(len(txt) / 15 * sr)))
+        t = np.arange(n, dtype=np.float32) / sr
+        write_wav(str(P / "work" / "chunks" / f"01_{k:04d}.wav"),
+                  (0.05 * np.sin(2 * np.pi * 220.0 * t)).astype(np.float32), sr)
+    gerar(P, "--only", "01")
+
+    # Decodifica o capítulo para WAV e mede RMS do título e do corpo pelos silêncios.
+    cap_m4a = P / "chapters" / "01.m4a"
+    wav_out = tmp_path / "cap01.wav"
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(cap_m4a), str(wav_out)], check=True,
+    )
+    audio, sr = read_wav(str(wav_out))
+    gaps = silêncios(wav_out)
+    assert len(gaps) >= 2
+    # [silêncio inicial][título][silêncio pós-título][corpo...]
+    t0 = gaps[0][0] + gaps[0][1]
+    t1 = gaps[1][0]
+    c0 = gaps[1][0] + gaps[1][1]
+    # corpo até o silêncio final (se houver) ou o fim
+    c1 = gaps[2][0] if len(gaps) >= 3 else len(audio) / sr
+    titulo = audio[int(t0 * sr):int(t1 * sr)]
+    corpo = audio[int(c0 * sr):int(c1 * sr)]
+    # corta bordas para evitar vazamento do silencedetect
+    margem = int(0.05 * sr)
+    titulo, corpo = titulo[margem:-margem or None], corpo[margem:-margem or None]
+    diff = rms_db(titulo) - rms_db(corpo)
+    assert abs(diff - A.TITLE_VOLUME_DB) <= 0.5, f"diff={diff:.2f} dB"
+
+
+def test_remonta_capitulo_sem_gerar_voz_de_novo(tmp_path, ambiente_fake):
+    """R21 pelo caminho real: apaga o m4a, mantém chunks, generate remonta sem synth."""
     P = projeto_com_titulos(tmp_path, eq=True)
     registro = tmp_path / "synth.log"
     ambiente_fake.setenv("FAKE_ENGINE_LOG", str(registro))
     gerar(P, "--only", "01")
     n = len(registro.read_text().splitlines())
     assert n >= 2
-
-    # Remonta o capítulo a partir dos WAV em cache, com EQ, sem synth.
-    book = json.loads((P / "book.json").read_text(encoding="utf8"))
-    cap = book["chapters"][0]
-    chunks = []
-    for k in range(len(cap["chunks"])):
-        w, sr = read_wav(str(P / "work" / "chunks" / f"01_{k:04d}.wav"))
-        chunks.append(w)
-    tratado, trailing = A.montar_capitulo(
-        chunks, cap["pauses"], cap["head"], sr, eq=True, prev_trailing=0.0,
-    )
-    assert len(tratado) > sr  # pelo menos 1 s
-    assert trailing >= 0
+    (P / "chapters" / "01.m4a").unlink()
+    (P / "work" / "locks" / "01").unlink()  # trava da 1ª execução; sem isso o generate pula o capítulo
+    gerar(P, "--only", "01")
+    assert (P / "chapters" / "01.m4a").exists()
     assert len(registro.read_text().splitlines()) == n, "não deveria gerar voz de novo"
 
-    # Com EQ, um grave forte abaixo de 80 Hz cai frente ao mesmo áudio sem EQ (antes do volume).
+
+def test_eq_true_e_false_produzem_capitulos_diferentes(tmp_path, ambiente_fake):
+    """R21: mesmos trechos, eq true e eq false geram arquivos de capítulo diferentes."""
+    from studio import audio as A
+    from studio.wavio import read_wav, write_wav
+
+    P = projeto_com_titulos(tmp_path, eq=False)
+    gerar(P, "--only", "01")
+    book = json.loads((P / "book.json").read_text(encoding="utf8"))
+    cap = book["chapters"][0]
+    chunks = [read_wav(str(P / "work" / "chunks" / f"01_{k:04d}.wav"))[0] for k in range(len(cap["chunks"]))]
+    sr = read_wav(str(P / "work" / "chunks" / "01_0000.wav"))[1]
+    lead = A.silencio_antes_do_titulo(book["chapters"], 0)
+    com = A.montar_capitulo(chunks, cap["pauses"], cap["head"], sr, eq=True, silencio_antes=lead)[0]
+    sem = A.montar_capitulo(chunks, cap["pauses"], cap["head"], sr, eq=False, silencio_antes=lead)[0]
+    assert com.shape == sem.shape
+    assert not np.allclose(com, sem, atol=1e-4)
+
+
+def test_eq_atenua_graves_fortes():
+    """Filtro de EQ do design reduz energia de um tom a 50 Hz."""
+    from studio import audio as A
+    sr = 16000
     t = np.arange(sr * 2, dtype=np.float32) / sr
     grave = (0.8 * np.sin(2 * np.pi * 50.0 * t)).astype(np.float32)
     com_eq = A.aplicar_eq(grave, sr)
-    sem_eq = grave
-    # energia na banda < 80 Hz (aproximação por RMS do sinal todo, dominado pelo 50 Hz)
-    assert float(np.sqrt(np.mean(com_eq ** 2))) < 0.7 * float(np.sqrt(np.mean(sem_eq ** 2)))
+    assert float(np.sqrt(np.mean(com_eq ** 2))) < 0.7 * float(np.sqrt(np.mean(grave ** 2)))
 
 
 def test_sem_head_nao_aplica_virada_de_titulo(tmp_path, ambiente_fake):
-    """R50: projeto sem head junta só com as pausas do livro, sem alongar título."""
+    """R50: sem head, o capítulo não começa com 1,5 s de silêncio e o 1º trecho não leva atempo."""
     from studio import audio as A
+    from studio.wavio import read_wav
 
     P = make_project(tmp_path, [
         ("01", "Um", ["Titulo curto.", "Frase do corpo do capítulo sem campo head."]),
     ], config={"motor": FAKE_ENGINE, "eq": False})
     gerar(P)
-    # Sem head: sem silêncio inicial de 1,5 s imposto pela virada
-    gaps = silêncios(P / "chapters" / "01.m4a")
-    if gaps and gaps[0][0] < 0.05:
-        assert gaps[0][1] < A.SILENCE_BEFORE_TITLE - 0.3
+
+    wav_out = tmp_path / "sem_head.wav"
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(P / "chapters" / "01.m4a"), str(wav_out)],
+        check=True,
+    )
+    gaps = silêncios(wav_out)
+    silencio_inicial = gaps[0][1] if gaps and abs(gaps[0][0]) < 0.05 else 0.0
+    assert silencio_inicial < A.SILENCE_BEFORE_TITLE - 0.3, gaps
+
+    bruto, sr = read_wav(str(P / "work" / "chunks" / "01_0000.wav"))
+    dur_bruto = len(bruto) / sr
+    # primeiro bloco sonoro: do fim do silêncio inicial (se houver) até o próximo silêncio
+    if gaps and abs(gaps[0][0]) < 0.05:
+        inicio = gaps[0][0] + gaps[0][1]
+        fim = gaps[1][0] if len(gaps) > 1 else ffprobe_dur(wav_out)
+    else:
+        inicio = 0.0
+        fim = gaps[0][0] if gaps else ffprobe_dur(wav_out)
+    dur_primeiro = fim - inicio
+    assert abs(dur_primeiro - dur_bruto) <= 0.12, (dur_primeiro, dur_bruto)
+    assert abs(dur_primeiro - dur_bruto / A.TITLE_ATEMPO) > 0.05
+
+
+def test_eq_por_graves_da_referencia(tmp_path):
+    """Regra do design: >60% da energia abaixo de 350 Hz => True; caso contrário False."""
+    from studio import audio as A
+    from studio.wavio import write_wav
+
+    sr = 16000
+    t = np.arange(sr * 2, dtype=np.float32) / sr
+    grave = (0.5 * np.sin(2 * np.pi * 100.0 * t)).astype(np.float32)
+    agudo = (0.5 * np.sin(2 * np.pi * 2000.0 * t)).astype(np.float32)
+    p_grave = tmp_path / "grave.wav"
+    p_agudo = tmp_path / "agudo.wav"
+    write_wav(str(p_grave), grave, sr)
+    write_wav(str(p_agudo), agudo, sr)
+    assert A.eq_por_graves(str(p_grave)) is True
+    assert A.eq_por_graves(str(p_agudo)) is False
+
+
+def test_silencio_antes_do_titulo_pelo_book():
+    """Silêncio antes do título = 1,5 s menos a última pausa do capítulo anterior incluído."""
+    from studio import audio as A
+
+    caps = [
+        {"id": "01", "include": True, "head": [0], "pauses": [1.0, 0.7], "chunks": ["a", "b"]},
+        {"id": "02", "include": False, "head": [0], "pauses": [1.0, 9.0], "chunks": ["x", "y"]},
+        {"id": "03", "include": True, "head": [0], "pauses": [1.0, 0.5], "chunks": ["c", "d"]},
+        {"id": "04", "include": True, "head": [], "pauses": [0.4], "chunks": ["só corpo"]},
+        {"id": "05", "include": True, "head": [0], "pauses": [1.0, 0.2], "chunks": ["e", "f"]},
+    ]
+    assert A.silencio_antes_do_titulo(caps, 0) == pytest.approx(1.5)
+    # anterior incluído é 01 (02 está fora): trailing 0,7 → lead 0,8
+    assert A.silencio_antes_do_titulo(caps, 2) == pytest.approx(0.8)
+    # 04 sem head: sem virada
+    assert A.silencio_antes_do_titulo(caps, 3) == 0.0
+    # anterior incluído é 04 (sem head): trailing = última pausa 0,4 → lead 1,1
+    assert A.silencio_antes_do_titulo(caps, 4) == pytest.approx(1.1)
 
 
 def test_constantes_batem_com_o_design():
