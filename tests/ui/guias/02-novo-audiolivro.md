@@ -22,7 +22,7 @@ Critério de aprovação:
 - Capítulos seguem a ordem do sumário (R1).
 - Capítulo desmarcado não é gerado nem aparece na tela final, e o capítulo renomeado aparece com o novo título (R9).
 
-Resultado: aprovado.
-- Passo 1 e 2: `livro-valido.epub` enviado em `home.html` abriu `review.html?id=cronicas-da-praca` com os 3 capítulos na ordem do sumário ("1. Manhã na Praça", "2. A Carta Azul" e "3. O Rio no Inverno"), todos marcados com "Incluir", com início do texto e estimativa de tempo (`tests/ui/capturas/02-conferencia-inicial.png`).
-- Passo 3 e 4: Ao desmarcar "Incluir" no capítulo 2 e renomear o capítulo 1 para "Capítulo Um: A Praça", o resumo mudou para "2 capítulos incluídos" (`tests/ui/capturas/02-conferencia-editada.png`) e "Continuar para a voz" salvou `book.json` via `PUT /api/projects/cronicas-da-praca/book`.
-- Passo 5: Com o motor falso configurado, a geração produziu apenas `chapters/01.m4a` e `chapters/03.m4a` (pulando `02`), montou `Crônicas da Praça.m4b` com apenas os 2 capítulos ("Capítulo Um: A Praça" e "3. O Rio no Inverno") e abriu `ready.html` exibindo esses 2 capítulos (`tests/ui/capturas/02-resultado-capitulos.png`).
+Resultado: aprovado na 1ª e na 2ª rodada (regressão).
+- Histórico (1ª rodada): aprovado (capítulos na ordem do sumário, exclusão do capítulo 2 e renomeação do capítulo 1 respeitadas na geração e no M4B).
+- 2ª rodada (regressão): repetido o fluxo completo desde o envio de `livro-valido.epub` em `home.html`; `prepare_book.py` gerou capa PNG válida automaticamente quando os bytes da capa do EPUB eram inválidos, e a geração com `FakeEngine` concluiu e montou `Crônicas da Praça.m4b` sem intervenção manual, abrindo `ready.html` com os 2 capítulos incluídos (`"Capítulo Um: A Praça"` e `"3. O Rio no Inverno"`).
+- Capturas: `tests/ui/capturas/02-conferencia-inicial.png`, `tests/ui/capturas/02-conferencia-editada.png`, `tests/ui/capturas/02-resultado-capitulos.png`.
