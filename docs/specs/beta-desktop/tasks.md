@@ -7,7 +7,7 @@ Marcação de testes: sem marca, rodam sem modelo e em segundos (motor falso, EP
 ## Base
 
 - [x] **T1.** Configurar neste repositório, antes do primeiro commit, o autor indicado em `local.md`. Criar `.venv`, `requirements-app.txt`, `requirements-dev.txt`, `pytest.ini` e `scripts/verify_beta.sh`, que roda as três camadas de teste, grava o resultado em `EVIDENCE_PATH` e sai com erro se algo falhar. O script exige as variáveis `LOCAL_MD`, `VOICE_PACK_DIR` e `EVIDENCE_PATH`, e falha se faltar alguma. Criar já o teste de R49.
-- [ ] **T2.** Provar a voz padrão: gerar áudio com a voz exportada de `portuguese_24l`, usando um `HF_HOME` vazio e sem token, e confirmar que clonar uma voz nova continua bloqueado. Até agora isso só foi testado com o modelo de 6 camadas. (R22) **Se falhar:** registrar em `bloqueios.md`, usar a voz pronta como padrão e seguir.
+- [x] **T2.** Provar a voz padrão: gerar áudio com a voz exportada de `portuguese_24l`, usando um `HF_HOME` vazio e sem token, e confirmar que clonar uma voz nova continua bloqueado. Até agora isso só foi testado com o modelo de 6 camadas. (R22) **Se falhar:** registrar em `bloqueios.md`, usar a voz pronta como padrão e seguir.
 - [ ] **T3.** Medir a referência de R11: Whisper `small` no capítulo de referência em OmniVoice, com o método de `local.md`. Guardar o número em `evidencia.md`.
 
 ## Motores e geração
@@ -27,11 +27,11 @@ Marcação de testes: sem marca, rodam sem modelo e em segundos (motor falso, EP
 ## Áudio
 
 - [x] **T12.** Virada de capítulo, EQ e volume ao juntar os trechos. (R19 a R21)
-- [ ] **T13.** Montagem automática, vídeo opcional e metadados de IA. (R27 a R29)
+- [x] **T13.** Montagem automática, vídeo opcional e metadados de IA. (R27 a R29)
 
 ## Servidor e telas
 
-- [ ] **T14.** Pastas do app, `brand.py`, abrir sem `--project`, token de sessão, `Host` e `Range`. (R33, R34, R30)
+- [x] **T14.** Pastas do app, `brand.py`, abrir sem `--project`, token de sessão, `Host` e `Range`. (R33, R34, R30)
 - [ ] **T15.** Rotas de projetos, voz, modelos, estado e refazer trecho. (R9, R26, R31, R36, R38)
 - [ ] **T16.** Telas de início e conferência, fontes embutidas. (R9, R35, R39)
 - [ ] **T17.** Tela de voz, com padrão, vozes prontas e clonagem guiada, e checagem da gravação. (R22 a R26)

@@ -30,3 +30,12 @@ Cada item traz o que travou, a opção escolhida para seguir e o que o dono prec
 ### B6. Divisões em romano e títulos em maiúsculas (T11, R4)
 - **Opção escolhida para seguir:** quando o sumário tem divisões em romano com capítulos em arábico dentro, as divisões viram partes ("Parte I: Nome") e os capítulos ficam "Parte I, capítulo 1: Subtítulo". Título todo em maiúsculas fica só com a inicial maiúscula. Capítulo chamado "Notas sobre..." fica no livro; só saem "Nota", "Notas", "Notas finais" e "Notas e referências".
 - **Para o dono decidir:** se esses nomes servem.
+
+### B7. Textos escolhidos sem estarem na especificação (T2, T13)
+- **Opção escolhida para seguir:** aviso de clonagem sem login: "Para usar a sua voz, entre na sua conta do Hugging Face e aceite os termos do Pocket TTS. Sem isso, só a voz padrão e as vozes prontas funcionam." Comentário nos metadados do M4B: "Narração gerada por IA. Narrador: {nome}."
+- **Para o dono decidir:** se os textos servem.
+
+### B8. A linha de comando deixou de gerar o vídeo MP4 por padrão (T13, R29)
+- **Situação:** R29 pede o vídeo só quando a pessoa pedir. Antes, `studio assemble` gerava o MP4 sempre.
+- **Opção escolhida para seguir:** vídeo só com `--video`. Isso muda o fluxo atual da skill, que passa a precisar pedir o vídeo.
+- **Para o dono decidir:** se a skill deve pedir o vídeo por padrão.

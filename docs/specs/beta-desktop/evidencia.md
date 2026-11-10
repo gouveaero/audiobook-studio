@@ -11,6 +11,9 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 | R2 a R4 (livros reais) | T11 | `tests/test_prepare_book.py` (4 testes novos) e `prepare_book` rodado pelo Maestro nos dois livros de `local.md`, com saída em pasta temporária | 33 passaram na camada base. Livro 1: 32 capítulos, mesmos ids e títulos da lista corrigida à mão; texto difere só em três capítulos (2 a 3%), pelas notas de rodapé que deixaram de ser lidas. Livro 2: 66 capítulos, partes e capítulos nomeados. Não verificado: como o Pocket lê subtítulos em maiúsculas do livro 2 |
 | R50 | T4 | `tests/test_engines.py`, `tests/test_generate.py` via `VERIFY_LAYERS=base scripts/verify_beta.sh` | 20 passaram (53 na camada). Não verificado: OmniVoice real, que não está instalado nesta máquina; o teste usa um modelo falso injetado e confere os mesmos argumentos de antes |
 | R19 a R21 | T12 | `tests/test_audio.py` via `VERIFY_LAYERS=base scripts/verify_beta.sh` | 11 passaram (64 na camada): LUFS e pico por capítulo, silêncios da virada medidos no M4B e em qualquer ordem de geração, título 2,5 dB (±0,5) acima do corpo, remontagem sem gerar voz, EQ ligado e desligado. Não verificado: os mesmos números em áudio do Pocket real |
+| R22 (voz padrão sem login) | T2 | `tests/test_voz_padrao.py` (`@pytest.mark.model`), rodado pelo Maestro com o Pocket real, sozinho na máquina | 2 passaram em 77 s: com `HF_HOME` vazio e sem token, a voz exportada de `portuguese_24l` falou, a voz pronta também, clonar foi recusado com mensagem em português e nenhum token apareceu na saída |
+| R27 a R29, R9 e R50 na montagem | T13 | `tests/test_assemble.py` via `VERIFY_LAYERS=base scripts/verify_beta.sh` | 6 passaram (91 na camada): metadados, capa, capítulos e durações por `ffprobe`, capítulo tirado fica fora, renomeado aparece, vídeo só se pedido, projeto antigo monta. Não verificado: a tela final dizer que é IA (T18) e a chamada automática ao fim da geração (T8) |
+| R33, R34, R30 (Range) | T14 | `tests/test_servidor_base.py` via `VERIFY_LAYERS=base scripts/verify_beta.sh` | 21 passaram: 403 sem token e com `Host` errado em POST, PUT e DELETE, token fechado por padrão, GET nunca devolve o token, servidor só em 127.0.0.1 (inclusive como processo real), `Range` em todo áudio, log de erro sem token. Não verificado: janela pywebview |
 
 ## Decisões de quem constrói
 
@@ -19,6 +22,9 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 - **T1:** o teste de R49 confere autor e committer, e também barra extensões de voz, livro e áudio nos arquivos versionados e nos commits novos.
 - **T4:** `config.json` aceita o rótulo antigo "OmniVoice"; motor desconhecido dá erro em português. Os pedaços `NN_KKKK.pSS.wav` são apagados quando viram `NN_KKKK.wav`. Pausa de 0,25 s entre pedaços do mesmo trecho. Trechos gravados em 16 bits; o cache antigo em float32 continua lido.
 - **T12:** a decisão do EQ é lida de `voice/manifest.json` dentro do projeto e, na falta dele, de `config.json` (`"eq": true`); sem o campo, EQ desligado. O silêncio antes do título é calculado só pelo `book.json`. `studio/audio.py` traz `eq_por_graves` para a regra dos 60% abaixo de 350 Hz, que a T17 chama.
+- **T2:** o teste baixa os pesos sem clonagem (672 MB) num `HF_HOME` vazio a cada execução; `HF_HOME_SEM_LOGIN` permite reaproveitar um cache sem token.
+- **T13:** entrada da montagem: `studio.assemble.montar_projeto(pasta, video=False)`. A montagem padrão deixou de gerar MP4 (R29); o teste de R7 que esperava o MP4 foi ajustado para esperar que ele não exista. Narrador nos metadados vem de `config.json`.
+- **T14:** as páginas leem o token da abertura, guardam em `sessionStorage` e enviam em toda escrita por `ui/studio.js`; log de erros em `logs/server.log` na pasta do app.
 
 ## Execuções
 
@@ -60,4 +66,20 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 - Commit: b96ab7c (com alterações não commitadas)
 - Camadas pedidas: base
 - Camada `base`: passou. 64 passed in 12.60s
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 13:59
+- Commit: c19beab (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 64 passed, 2 deselected in 20.42s
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 14:00
+- Commit: 17b944e (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 91 passed, 2 deselected in 21.81s
 - Resultado: passou
