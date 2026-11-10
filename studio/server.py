@@ -277,7 +277,7 @@ class H(SimpleHTTPRequestHandler):
             log_exception()
             return self.send_json({"error": erro_publico()}, 500)
         if p == "/":
-            self.path = "/setup.html"
+            self.path = "/home.html" if not P else "/setup.html"
         super().do_GET()
 
     def body(self):

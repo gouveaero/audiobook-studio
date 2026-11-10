@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.png">
+<title>Audiobook Studio</title>
+<link rel="stylesheet" href="/fonts.css">
+<style>
+:root { --a: #35e6ff; --bg: #02070c; --tx: #d8f7ff; --dim: rgba(216,247,255,.55); --ok: #3dff7a; --bad: #ff6b6b; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: radial-gradient(ellipse at 50% 0%, #0b2733, var(--bg) 60%); color: var(--tx); font-family: "Oxanium", system-ui, sans-serif; min-height: 100vh; padding: 48px 20px 80px; }
+main { max-width: 760px; margin: 0 auto; }
+h1 { font-size: 40px; font-weight: 700; letter-spacing: .02em; }
+.sub { color: var(--dim); margin: 6px 0 28px; font-size: 18px; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 22px; }
+button, label.btn { background: transparent; color: var(--a); border: 1.5px solid var(--a); border-radius: 10px; padding: 10px 18px; font: inherit; font-size: 16px; cursor: pointer; display: inline-block; }
+button:hover, label.btn:hover { background: color-mix(in srgb, var(--a) 18%, transparent); }
+button.go { background: var(--a); color: #00131a; font-weight: 700; }
+input[type=file] { display: none; }
+.list { display: flex; flex-direction: column; gap: 10px; }
+.item { border: 1px solid color-mix(in srgb, var(--a) 35%, transparent); background: color-mix(in srgb, var(--a) 5%, transparent); border-radius: 12px; padding: 16px 18px; display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
+.item h2 { font-size: 20px; font-weight: 600; }
+.item p { color: var(--dim); font-size: 14px; margin-top: 4px; }
+.vazio { color: var(--dim); font-size: 16px; padding: 24px 0; }
+.err { color: var(--bad); margin-top: 14px; font-size: 15px; }
+.ai { font-size: 14px; color: var(--dim); border-left: 3px solid var(--a); padding: 6px 12px; margin-top: 32px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Audiobook Studio</h1>
+  <p class="sub">Seus audiolivros neste computador. Funciona sem internet depois que o modelo já foi baixado.</p>
+  <div class="row">
+    <label class="btn go">Novo audiolivro<input type="file" id="epub" accept=".epub"></label>
+  </div>
+  <div id="err" class="err" hidden></div>
+  <div id="lista" class="list"></div>
+  <div id="vazio" class="vazio" hidden>Nenhum livro ainda. Escolha um EPUB em português para começar.</div>
+  <p class="ai">A narração é gerada por inteligência artificial.</p>
+</main>
+<script src="/studio.js"></script>
+<script>
+const $ = (i) => document.getElementById(i);
+const err = (m) => { $("err").hidden = !m; $("err").textContent = m || ""; };
+
+async function carregar() {
+  err("");
+  const j = await (await studio.fetch("/api/projects")).json();
+  const lista = $("lista");
+  lista.innerHTML = "";
+  const projects = j.projects || [];
+  $("vazio").hidden = projects.length > 0;
+  for (const p of projects) {
+    const el = document.createElement("div");
+    el.className = "item";
+    el.innerHTML = `<div><h2></h2><p></p></div><button type="button">Abrir</button>`;
+    el.querySelector("h2").textContent = p.title || p.id;
+    el.querySelector("p").textContent = (p.author ? p.author + " · " : "") + p.id;
+    el.querySelector("button").onclick = () => { location.href = studio.href("/review.html?id=" + encodeURIComponent(p.id)); };
+    lista.appendChild(el);
+  }
+}
+
+$("epub").onchange = async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  err("");
+  try {
+    const j = await studio.post("/api/projects", f);
+    location.href = studio.href("/review.html?id=" + encodeURIComponent(j.id));
+  } catch (ex) {
+    err(ex.message || "Não foi possível ler este EPUB.");
+  } finally {
+    e.target.value = "";
+  }
+};
+
+carregar().catch((ex) => err(ex.message || "Não foi possível listar os livros."));
+</script>
+</body>
+</html>

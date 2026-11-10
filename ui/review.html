@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.png">
+<title>Conferência do livro</title>
+<link rel="stylesheet" href="/fonts.css">
+<style>
+:root { --a: #35e6ff; --bg: #02070c; --tx: #d8f7ff; --dim: rgba(216,247,255,.55); --ok: #3dff7a; --bad: #ff6b6b; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: radial-gradient(ellipse at 50% 0%, #0b2733, var(--bg) 60%); color: var(--tx); font-family: "Oxanium", system-ui, sans-serif; min-height: 100vh; padding: 40px 20px 80px; }
+main { max-width: 860px; margin: 0 auto; }
+h1 { font-size: 34px; font-weight: 700; }
+.sub { color: var(--dim); margin: 6px 0 22px; font-size: 16px; }
+.top { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+button { background: transparent; color: var(--a); border: 1.5px solid var(--a); border-radius: 10px; padding: 10px 16px; font: inherit; font-size: 15px; cursor: pointer; }
+button:hover { background: color-mix(in srgb, var(--a) 18%, transparent); }
+button.go { background: var(--a); color: #00131a; font-weight: 700; }
+button.ghost { border-color: color-mix(in srgb, var(--a) 40%, transparent); color: var(--dim); }
+.meta { color: var(--dim); font-size: 14px; margin-bottom: 16px; }
+.cap { border: 1px solid color-mix(in srgb, var(--a) 30%, transparent); background: color-mix(in srgb, var(--a) 5%, transparent); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; }
+.cap.off { opacity: .45; }
+.cap .linha { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.cap label.inc { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--a); min-width: 110px; }
+.cap input[type=text] { flex: 1; min-width: 180px; background: rgba(0,0,0,.35); color: var(--tx); border: 1px solid #ffffff30; border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 15px; }
+.cap .inicio { width: 100%; color: var(--dim); font-size: 13px; margin-top: 8px; line-height: 1.4; }
+.cap .tempo { color: var(--a); font-size: 13px; white-space: nowrap; }
+.err { color: var(--bad); margin: 12px 0; font-size: 15px; }
+.ai { font-size: 14px; color: var(--dim); border-left: 3px solid var(--a); padding: 6px 12px; margin-top: 28px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <button type="button" class="ghost" id="voltar">Início</button>
+    <button type="button" class="go" id="seguir">Continuar para a voz</button>
+  </div>
+  <h1 id="titulo">Conferência do livro</h1>
+  <p class="sub">Inclua ou tire capítulos, renomeie e confira o início do texto. O tempo é uma estimativa.</p>
+  <p class="meta" id="meta"></p>
+  <div id="err" class="err" hidden></div>
+  <div id="caps"></div>
+  <p class="ai">A narração é gerada por inteligência artificial.</p>
+</main>
+<script src="/studio.js"></script>
+<script>
+const $ = (i) => document.getElementById(i);
+const q = new URLSearchParams(location.search);
+const pid = q.get("id");
+const CPS = 13; // estimativa conservadora em caracteres por segundo
+let book = null;
+
+const err = (m) => { $("err").hidden = !m; $("err").textContent = m || ""; };
+const fmtTempo = (chars) => {
+  const s = Math.max(1, Math.round(chars / CPS));
+  if (s < 60) return "~" + s + " s";
+  const m = Math.round(s / 60);
+  if (m < 60) return "~" + m + " min";
+  return "~" + (m / 60).toFixed(1).replace(".", ",") + " h";
+};
+const inicioTexto = (ch) => {
+  const t = (ch.chunks || []).join(" ").replace(/\s+/g, " ").trim();
+  return t.length > 140 ? t.slice(0, 137) + "..." : t;
+};
+
+function desenhar() {
+  $("titulo").textContent = book.title || "Livro";
+  const totalChars = (book.chapters || []).filter(c => c.include !== false)
+    .reduce((n, c) => n + (c.chunks || []).reduce((a, t) => a + t.length, 0), 0);
+  $("meta").textContent = (book.author ? book.author + " · " : "") +
+    (book.chapters || []).length + " capítulos · estimativa " + fmtTempo(totalChars);
+  const box = $("caps");
+  box.innerHTML = "";
+  (book.chapters || []).forEach((ch, i) => {
+    const chars = (ch.chunks || []).reduce((a, t) => a + t.length, 0);
+    const el = document.createElement("section");
+    el.className = "cap" + (ch.include === false ? " off" : "");
+    el.innerHTML =
+      '<div class="linha">' +
+        '<label class="inc"><input type="checkbox" class="incb"> Incluir</label>' +
+        '<input type="text" class="tit" aria-label="Renomear capítulo">' +
+        '<span class="tempo"></span>' +
+      '</div>' +
+      '<p class="inicio"></p>';
+    const inc = el.querySelector(".incb");
+    const tit = el.querySelector(".tit");
+    inc.checked = ch.include !== false;
+    tit.value = ch.title || "";
+    el.querySelector(".tempo").textContent = fmtTempo(chars);
+    el.querySelector(".inicio").textContent = "Início: " + (inicioTexto(ch) || "(sem texto)");
+    inc.onchange = () => { ch.include = inc.checked; el.classList.toggle("off", !inc.checked); atualizarMeta(); };
+    tit.onchange = tit.onblur = () => { ch.title = tit.value.trim() || ch.title; };
+    box.appendChild(el);
+  });
+}
+
+function atualizarMeta() {
+  const totalChars = (book.chapters || []).filter(c => c.include !== false)
+    .reduce((n, c) => n + (c.chunks || []).reduce((a, t) => a + t.length, 0), 0);
+  $("meta").textContent = (book.author ? book.author + " · " : "") +
+    (book.chapters || []).filter(c => c.include !== false).length + " capítulos incluídos · estimativa " + fmtTempo(totalChars);
+}
+
+async function salvar() {
+  await studio.put("/api/projects/" + encodeURIComponent(pid) + "/book", JSON.stringify(book), {
+    "Content-Type": "application/json"
+  });
+}
+
+$("voltar").onclick = () => { location.href = studio.href("/home.html"); };
+$("seguir").onclick = async () => {
+  err("");
+  try {
+    await salvar();
+    location.href = studio.href("/voice.html?id=" + encodeURIComponent(pid));
+  } catch (ex) {
+    err(ex.message || "Não foi possível salvar a conferência.");
+  }
+};
+
+(async () => {
+  if (!pid) { err("Falta o livro. Volte ao início."); return; }
+  try {
+    const r = await studio.fetch("/api/projects/" + encodeURIComponent(pid) + "/book");
+    book = await r.json();
+    if (!r.ok) throw new Error(book.error || "Livro não encontrado.");
+    (book.chapters || []).forEach(c => { if (c.include === undefined) c.include = true; });
+    desenhar();
+  } catch (ex) {
+    err(ex.message || "Não foi possível abrir o livro.");
+  }
+})();
+</script>
+</body>
+</html>
