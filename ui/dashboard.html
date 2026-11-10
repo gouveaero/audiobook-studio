@@ -56,6 +56,12 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 @keyframes tin { from { transform: scale(1.8); opacity: 0; } }
 @keyframes tout { to { opacity: 0; } }
 .hint { right: calc(var(--u) * 70); bottom: calc(var(--u) * 8); font-size: calc(var(--u) * 15); color: var(--dim); }
+.ctrls { left: calc(var(--u) * 70); bottom: calc(var(--u) * 40); display: flex; gap: calc(var(--u) * 12); flex-wrap: wrap; align-items: center; z-index: 5; pointer-events: auto; }
+.ctrls button { background: transparent; color: var(--a); border: calc(var(--u) * 1.5) solid var(--a); border-radius: calc(var(--u) * 10); padding: calc(var(--u) * 10) calc(var(--u) * 18); font: inherit; font-size: calc(var(--u) * 18); cursor: pointer; }
+.ctrls button:hover { background: color-mix(in srgb, var(--a) 18%, transparent); }
+.ctrls button:disabled { opacity: .4; cursor: default; }
+.ctrls .eta { font-size: calc(var(--u) * 20); color: var(--dim); margin-left: calc(var(--u) * 8); }
+.ctrls .err { color: #ff6b6b; font-size: calc(var(--u) * 18); }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
 </style>
 </head>
@@ -79,17 +85,33 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   <div class="abs g" id="gc"><div class="n"><span id="rc">0</span><small>×</small></div><div class="t" id="tc">nuvem, GPU 0%</div></div>
   <div class="abs g" id="gm"><div class="n"><span id="rm">0</span><small>×</small></div><div class="t" id="tm">este computador</div></div>
   <div class="toasts" id="toasts"></div>
+  <div class="abs ctrls" id="ctrls">
+    <button type="button" id="btnPause">Pausar</button>
+    <button type="button" id="btnResume" disabled>Continuar</button>
+    <button type="button" id="btnCancel">Cancelar</button>
+    <span class="eta" id="etaTxt"></span>
+    <span class="err" id="dashErr"></span>
+  </div>
   <div class="abs hint">teclas: 1 ciano, 2 verde, 3 laranja</div>
 </main>
 <script src="/studio.js"></script>
 <script>
 const $ = (id) => document.getElementById(id), q = new URLSearchParams(location.search), DEMO = q.has("demo");
+const PID = q.get("id") || "";
 const fmt = (n, d = 0) => n.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const root = document.documentElement;
 function tema(t) { root.dataset.tema = t; try { localStorage.tema = t; } catch (e) {} }
 tema(q.get("tema") || (() => { try { return localStorage.tema; } catch (e) { return ""; } })() || "ciano");
 addEventListener("keydown", e => { const m = { 1: "ciano", 2: "verde", 3: "laranja" }[e.key]; if (m) tema(m); });
 const css = (v) => getComputedStyle(root).getPropertyValue(v).trim();
+
+function fmtEta(sec) {
+  if (sec == null || sec === "" || Number.isNaN(Number(sec))) return "";
+  const s = Math.max(0, Math.round(Number(sec)));
+  if (s < 60) return "restam ~" + s + " s";
+  if (s < 3600) return "restam ~" + Math.round(s / 60) + " min";
+  return "restam ~" + (s / 3600).toFixed(1).replace(".", ",") + " h";
+}
 
 // ---------- configuração (genérica) ----------
 const CFG = { livro: "Livro", autor: "Autor", voz: "Voz", segundos: 16, motor: "OmniVoice", nuvem: "NVIDIA A100", mac: "este computador", capitulos: 65 };
@@ -99,19 +121,93 @@ function build() {
   $("tTitle").textContent = CFG.livro; $("tSub").textContent = CFG.autor + " · voz de " + CFG.voz + " · " + CFG.motor;
   $("tm").textContent = CFG.mac;
 }
-fetch("config.json").then(r => r.json()).then(c => Object.assign(CFG, c)).catch(() => {}).finally(build);
+async function loadCfg() {
+  try {
+    const url = PID ? "/api/projects/" + encodeURIComponent(PID) + "/config" : "/config.json";
+    const c = await (await studio.fetch(url)).json();
+    Object.assign(CFG, c);
+  } catch (e) {}
+  build();
+}
+loadCfg();
 
 // ---------- dados ----------
 const DEMO_TEXT = ["A história de uma cidade é a história do mundo, mas é também a crônica de um lugar que frequentemente vivia na penúria.",
   "Quando o rei capturou a cidadela, a cidade já era antiga. Não chegava a ser exatamente uma cidade.", "As ruas reluziam com galões dourados, vestidos por príncipes e generais."];
-let S = { total: 0, cloud: 0, mac: 0, gpu: 0, rateCloud: 0, rateMac: 0, hours: 0, done: [], macIds: [], live: [], titles: {} }, dT = 0;
+let S = { total: 0, cloud: 0, mac: 0, gpu: 0, rateCloud: 0, rateMac: 0, hours: 0, done: [], macIds: [], live: [], titles: {}, status: "parado" }, dT = 0;
+let startedOnce = false;
 function demoState() { dT++; const p = Math.min(1, (dT % 150) / 140), n = Math.floor(p * CFG.capitulos), done = [];
   for (let i = 1; i <= n; i++) done.push(String(i).padStart(2, "0"));
   return { titles: {}, total: p, cloud: p, mac: p, gpu: 95 + Math.round(Math.random() * 5), rateCloud: 12 + Math.random() * 2, rateMac: .6 + Math.random() * .3, hours: p * 26, done, macIds: [],
-    live: [{ who: "cloud", ch: String(n + 1).padStart(2, "0"), title: "capítulo " + (n + 1), text: DEMO_TEXT[Math.floor(dT / 6) % 3] }] }; }
-async function poll() { try { if (DEMO) throw 0; S = await (await fetch("/api/state", { cache: "no-store" })).json(); $("liveTxt").textContent = "ao vivo"; }
-  catch (e) { S = demoState(); $("liveTxt").textContent = "demonstração"; } }
-setInterval(poll, DEMO ? 1000 : 2500); poll();
+    live: [{ who: "cloud", ch: String(n + 1).padStart(2, "0"), title: "capítulo " + (n + 1), text: DEMO_TEXT[Math.floor(dT / 6) % 3] }], status: "gerando", eta_seconds: (1 - p) * 3600 }; }
+function stateUrl() {
+  if (PID) return "/api/projects/" + encodeURIComponent(PID) + "/state";
+  return "/api/state";
+}
+function syncCtrls() {
+  const st = S.status || "parado";
+  const ativo = ["gerando", "rodando", "refazendo", "montando"].indexOf(st) >= 0;
+  const pausado = st === "pausado";
+  $("btnPause").disabled = !ativo;
+  $("btnResume").disabled = !pausado;
+  $("btnCancel").disabled = !(ativo || pausado);
+  $("etaTxt").textContent = fmtEta(S.eta_seconds);
+  $("liveTxt").textContent = st === "pronto" ? "pronto" : (st === "pausado" ? "pausado" : (DEMO ? "demonstração" : "ao vivo"));
+  if (S.error) $("dashErr").textContent = S.error;
+}
+async function ensureStarted() {
+  if (!PID || DEMO || startedOnce) return;
+  const st = S.status || "parado";
+  if (st === "parado" || st === "cancelado" || st === "erro" || !st) {
+    try {
+      await studio.post("/api/projects/" + encodeURIComponent(PID) + "/start", "{}");
+      startedOnce = true;
+    } catch (ex) {
+      $("dashErr").textContent = ex.message || "Não foi possível iniciar.";
+    }
+  } else {
+    startedOnce = true;
+  }
+}
+async function poll() {
+  try {
+    if (DEMO) throw 0;
+    const r = await studio.fetch(stateUrl());
+    S = await r.json();
+    if (!r.ok) throw new Error(S.error || "estado");
+    // mapa para o HUD legado (nuvem/mac); geração local usa mac
+    S.cloud = S.cloud || 0;
+    S.mac = S.total || 0;
+    S.rateCloud = S.rateCloud || 0;
+    S.rateMac = S.chars_per_second ? (S.chars_per_second / 13) : (S.rateMac || 0);
+    S.gpu = S.gpu || 0;
+    syncCtrls();
+    await ensureStarted();
+    if (S.status === "pronto" && PID) {
+      location.href = studio.href("/ready.html?id=" + encodeURIComponent(PID));
+      return;
+    }
+  } catch (e) {
+    S = demoState();
+    syncCtrls();
+  }
+}
+setInterval(poll, DEMO ? 1000 : 1500); poll();
+$("btnPause").onclick = async () => {
+  if (!PID) return;
+  try { await studio.post("/api/projects/" + encodeURIComponent(PID) + "/pause", "{}"); await poll(); }
+  catch (ex) { $("dashErr").textContent = ex.message || "Não pausou."; }
+};
+$("btnResume").onclick = async () => {
+  if (!PID) return;
+  try { await studio.post("/api/projects/" + encodeURIComponent(PID) + "/resume", "{}"); await poll(); }
+  catch (ex) { $("dashErr").textContent = ex.message || "Não continuou."; }
+};
+$("btnCancel").onclick = async () => {
+  if (!PID) return;
+  try { await studio.post("/api/projects/" + encodeURIComponent(PID) + "/cancel", "{}"); await poll(); }
+  catch (ex) { $("dashErr").textContent = ex.message || "Não cancelou."; }
+};
 const cur = { total: 0, cloud: 0, mac: 0, gpu: 0, rc: 0, rm: 0, hours: 0 };
 const ease = (k, to, a = .08) => (cur[k] += (to - cur[k]) * a);
 

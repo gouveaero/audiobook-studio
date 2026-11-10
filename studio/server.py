@@ -29,6 +29,8 @@ PORT = 8791
 AUDIO_TYPES = {".wav": "audio/wav", ".m4a": "audio/mp4", ".m4b": "audio/mp4"}
 AUDIO_ROOTS = ("voice", "chapters", "audiobook")
 PROJ_RE = re.compile(r"^/api/projects/([^/]+)(/.*)?$")
+# Áudio multi-projeto: /api/projects/<id>/file/chapters/01.m4a (Range, R30)
+PROJ_FILE_RE = re.compile(r"^/api/projects/([^/]+)/file/(voice|chapters|audiobook)/(.+)$")
 
 
 def pj(*a):
@@ -126,23 +128,17 @@ def erro_publico(msg: str = "Algo deu errado. Veja o log.") -> str:
     return texto
 
 
-def resolve_project_audio(url_path: str):
-    """Resolve /voice|chapters|audiobook/... para um arquivo sob P. None = não é áudio do projeto; False = tentativa inválida."""
-    if not P:
+def resolve_audio_under(root: Path, rel_parts: tuple[str, ...]):
+    """Resolve arquivo de áudio sob root. None = inexistente; False = pedido inválido."""
+    if not rel_parts or rel_parts[0] not in AUDIO_ROOTS:
         return None
-    raw = unquote(url_path.split("?", 1)[0])
-    if ".." in raw or "\\" in raw:
+    if any(p in (".", "..") or "/" in p or "\\" in p for p in rel_parts):
         return False
-    parts = Path(raw.lstrip("/")).parts
-    if not parts or parts[0] not in AUDIO_ROOTS:
-        return None
-    if any(p in (".", "..") for p in parts):
-        return False
-    suffix = Path(parts[-1]).suffix.lower()
+    suffix = Path(rel_parts[-1]).suffix.lower()
     if suffix not in AUDIO_TYPES:
         return None
-    root = Path(P).resolve()
-    full = (root.joinpath(*parts)).resolve()
+    root = root.resolve()
+    full = (root.joinpath(*rel_parts)).resolve()
     try:
         full.relative_to(root)
     except ValueError:
@@ -150,6 +146,33 @@ def resolve_project_audio(url_path: str):
     if not full.is_file():
         return None
     return str(full), AUDIO_TYPES[suffix]
+
+
+def resolve_project_audio(url_path: str):
+    """Resolve /voice|chapters|audiobook/... para um arquivo sob P. None = não é áudio; False = inválido."""
+    if not P:
+        return None
+    raw = unquote(url_path.split("?", 1)[0])
+    if ".." in raw or "\\" in raw:
+        return False
+    parts = Path(raw.lstrip("/")).parts
+    return resolve_audio_under(Path(P), parts)
+
+
+def resolve_multi_project_audio(url_path: str):
+    """Resolve /api/projects/<id>/file/{voice|chapters|audiobook}/... com Range (R30)."""
+    raw = unquote(url_path.split("?", 1)[0])
+    m = PROJ_FILE_RE.match(raw)
+    if not m:
+        return None
+    pid, root_name, rest = m.group(1), m.group(2), m.group(3)
+    if ".." in rest or "\\" in rest:
+        return False
+    proj = local_api.project_path(pid)
+    if not proj:
+        return False
+    parts = (root_name,) + Path(rest).parts
+    return resolve_audio_under(proj, parts)
 
 
 def make_server(port: int) -> ThreadingHTTPServer:
@@ -236,7 +259,9 @@ class H(SimpleHTTPRequestHandler):
         if not self._guard(False):
             return
         p = urlparse(self.path).path
-        audio = resolve_project_audio(p)
+        audio = resolve_multi_project_audio(p)
+        if audio is None:
+            audio = resolve_project_audio(p)
         if audio is False:
             return self.send_json({"error": "Pedido recusado."}, 403)
         if audio:
@@ -261,6 +286,21 @@ class H(SimpleHTTPRequestHandler):
                     return self.send_json(local_api.load_book(pid))
                 if rest == "/state":
                     return self.send_json(local_api.project_state(pid))
+                if rest == "/config":
+                    proj = local_api.project_path(pid)
+                    if not proj:
+                        raise FileNotFoundError(pid)
+                    book = jload(str(proj / "book.json"), {}) or {}
+                    cfg = jload(str(proj / "config.json"), {}) or {}
+                    out = {
+                        "livro": book.get("title", "Livro"),
+                        "autor": book.get("author", ""),
+                        "voz": cfg.get("voz") or "voz",
+                        "motor": cfg.get("motor") or "pocket",
+                        "capitulos": len([c for c in book.get("chapters", []) if c.get("include", True)]) or 1,
+                    }
+                    out.update(cfg)
+                    return self.send_json(out)
             if p == "/config.json":
                 if not P:
                     return self.send_json({"app": APP_NAME})

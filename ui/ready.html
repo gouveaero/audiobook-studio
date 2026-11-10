@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.png">
+<title>Audiolivro pronto</title>
+<link rel="stylesheet" href="/fonts.css">
+<style>
+:root { --a: #35e6ff; --bg: #02070c; --tx: #d8f7ff; --dim: rgba(216,247,255,.55); --ok: #3dff7a; --bad: #ff6b6b; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: radial-gradient(ellipse at 50% 0%, #0b2733, var(--bg) 60%); color: var(--tx); font-family: "Oxanium", system-ui, sans-serif; min-height: 100vh; padding: 40px 20px 80px; }
+main { max-width: 860px; margin: 0 auto; }
+h1 { font-size: 34px; font-weight: 700; }
+.sub { color: var(--dim); margin: 6px 0 22px; font-size: 16px; }
+.top { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+button, label.btn { background: transparent; color: var(--a); border: 1.5px solid var(--a); border-radius: 10px; padding: 10px 16px; font: inherit; font-size: 15px; cursor: pointer; }
+button:hover { background: color-mix(in srgb, var(--a) 18%, transparent); }
+button.go { background: var(--a); color: #00131a; font-weight: 700; }
+button.ghost { border-color: color-mix(in srgb, var(--a) 40%, transparent); color: var(--dim); }
+.cap { border: 1px solid color-mix(in srgb, var(--a) 30%, transparent); background: color-mix(in srgb, var(--a) 5%, transparent); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+.cap h2 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+.cap audio { width: 100%; margin-top: 6px; }
+.flag { border-color: color-mix(in srgb, var(--bad) 50%, transparent); }
+.flag p { color: var(--bad); font-size: 14px; margin: 8px 0; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.err { color: var(--bad); margin: 12px 0; font-size: 15px; }
+.ok { color: var(--ok); font-size: 14px; margin: 8px 0; }
+.ai { font-size: 14px; color: var(--dim); border-left: 3px solid var(--a); padding: 6px 12px; margin-top: 28px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <button type="button" class="ghost" id="inicio">Início</button>
+    <button type="button" class="go" id="salvar">Salvar M4B</button>
+    <button type="button" id="finder">Mostrar no Finder</button>
+  </div>
+  <h1 id="titulo">Audiolivro pronto</h1>
+  <p class="sub">Ouça os capítulos, refaça trechos marcados e salve o arquivo.</p>
+  <div id="err" class="err" hidden></div>
+  <div id="ok" class="ok" hidden></div>
+  <div id="caps"></div>
+  <p class="ai">A narração é gerada por inteligência artificial.</p>
+</main>
+<script src="/studio.js"></script>
+<script>
+const $ = (i) => document.getElementById(i);
+const q = new URLSearchParams(location.search);
+const pid = q.get("id");
+const err = (m) => { $("err").hidden = !m; $("err").textContent = m || ""; };
+const ok = (m) => { $("ok").hidden = !m; $("ok").textContent = m || ""; };
+
+function media(rel) {
+  return "/api/projects/" + encodeURIComponent(pid) + "/file/" + rel;
+}
+
+async function carregar() {
+  err("");
+  if (!pid) { err("Falta o livro. Volte ao início."); return; }
+  const book = await (await studio.fetch("/api/projects/" + encodeURIComponent(pid) + "/book")).json();
+  const state = await (await studio.fetch("/api/projects/" + encodeURIComponent(pid) + "/state")).json();
+  $("titulo").textContent = book.title || "Audiolivro pronto";
+  document.title = (book.title || "Audiolivro") + " pronto";
+  const flagged = {};
+  (state.flagged || []).forEach((f) => {
+    const k = f.chapter + ":" + f.chunk;
+    flagged[k] = f;
+  });
+  const box = $("caps");
+  box.innerHTML = "";
+  (book.chapters || []).filter((c) => c.include !== false).forEach((ch) => {
+    const el = document.createElement("section");
+    el.className = "cap";
+    const temFlag = (ch.chunks || []).some((_, i) => flagged[ch.id + ":" + i]);
+    if (temFlag) el.classList.add("flag");
+    el.innerHTML = "<h2></h2><audio controls preload=\"metadata\"></audio><div class=\"row\"></div>";
+    el.querySelector("h2").textContent = ch.title || ch.id;
+    const audio = el.querySelector("audio");
+    audio.src = media("chapters/" + ch.id + ".m4a");
+    const row = el.querySelector(".row");
+    (ch.chunks || []).forEach((_, i) => {
+      const key = ch.id + ":" + i;
+      if (!flagged[key]) return;
+      const p = document.createElement("p");
+      p.textContent = "Trecho " + (i + 1) + " marcado. Pode refazer só este pedaço.";
+      el.insertBefore(p, row);
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = "Refazer trecho " + (i + 1);
+      b.onclick = () => refazer(ch.id, i, b);
+      row.appendChild(b);
+    });
+    box.appendChild(el);
+  });
+}
+
+async function refazer(chapter, chunk, btn) {
+  err(""); ok("");
+  const antigo = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Refazendo...";
+  try {
+    await studio.post(
+      "/api/projects/" + encodeURIComponent(pid) + "/redo",
+      JSON.stringify({ chapter: chapter, chunk: chunk }),
+      { "Content-Type": "application/json" }
+    );
+    // espera terminar
+    for (let i = 0; i < 300; i++) {
+      const st = await (await studio.fetch("/api/projects/" + encodeURIComponent(pid) + "/state")).json();
+      if (["pronto", "concluido", "erro", "cancelado"].indexOf(st.status) >= 0) break;
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    ok("Trecho refeito.");
+    await carregar();
+  } catch (ex) {
+    err(ex.message || "Não foi possível refazer o trecho.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = antigo;
+  }
+}
+
+$("inicio").onclick = () => { location.href = studio.href("/home.html"); };
+$("salvar").onclick = async () => {
+  err(""); ok("");
+  try {
+    const j = await studio.post(
+      "/api/projects/" + encodeURIComponent(pid) + "/assemble",
+      JSON.stringify({ video: false }),
+      { "Content-Type": "application/json" }
+    );
+    ok(j.out ? ("M4B salvo: " + j.out) : "M4B montado.");
+  } catch (ex) {
+    err(ex.message || "Não foi possível salvar o M4B.");
+  }
+};
+$("finder").onclick = async () => {
+  err(""); ok("");
+  try {
+    await studio.post("/api/projects/" + encodeURIComponent(pid) + "/reveal", "{}");
+    ok("Pasta aberta no Finder.");
+  } catch (ex) {
+    err(ex.message || "Não foi possível mostrar no Finder.");
+  }
+};
+
+carregar().catch((ex) => err(ex.message || "Não foi possível abrir a tela final."));
+</script>
+</body>
+</html>
