@@ -201,3 +201,11 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 - Camadas pedidas: base
 - Camada `base`: passou. 209 passed, 7 deselected in 64.44s (0:01:04)
 - Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 16:30
+- Commit: 8e5c935 (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 216 passed, 10 deselected in 81.79s (0:01:21)
+- Resultado: passou
