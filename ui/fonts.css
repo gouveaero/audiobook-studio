@@ -1,4 +1,8 @@
 /* Fontes embutidas (OFL). Sem rede externa. */
+
+/* R48: display: inline-block em botões/links não pode vencer o atributo hidden. */
+[hidden] { display: none !important; }
+
 @font-face {
   font-family: "Oxanium";
   font-style: normal;
