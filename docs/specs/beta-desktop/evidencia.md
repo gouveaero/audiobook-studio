@@ -165,3 +165,27 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 - Camadas pedidas: base
 - Camada `base`: passou. 188 passed, 6 deselected in 69.42s (0:01:09)
 - Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 15:42
+- Commit: e8d70bd (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 207 passed, 7 deselected in 90.05s (0:01:30)
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 15:59
+- Commit: 4c254c3 (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 207 passed, 7 deselected in 74.61s (0:01:14)
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 16:00
+- Commit: 88b14af (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 208 passed, 7 deselected in 89.08s (0:01:29)
+- Resultado: passou
