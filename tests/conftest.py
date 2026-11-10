@@ -56,18 +56,17 @@ def local_md() -> str:
 
 
 def local_paths() -> dict:
-    """Mapeia o rótulo de cada linha de LOCAL_MD ("Exportada", "Livro 1", ...) para o caminho entre crases, expandido."""
+    """Mapeia o rótulo de cada linha de LOCAL_MD ("Exportada", "Livro 1", ...) para o caminho entre crases, expandido.
+    O Python do Whisper, numa linha só com o caminho, entra como "whisper_python"."""
+    import re
     paths = {}
     for linha in local_md().splitlines():
-        linha = linha.strip().lstrip("- ")
-        if "`" not in linha or ":" not in linha.split("`", 1)[0]:
-            continue
-        rotulo = linha.split(":", 1)[0].strip()
-        valor = linha.split("`", 2)[1]
-        paths[rotulo] = os.path.expanduser(valor)
-    for linha in local_md().splitlines():  # o Python do Whisper fica numa linha só com o caminho
-        if linha.strip().startswith("`") and linha.strip().rstrip("`").endswith("/bin/python"):
-            paths["whisper_python"] = os.path.expanduser(linha.strip().strip("`"))
+        linha = linha.strip().lstrip("- ").strip()
+        m = re.match(r"^(?P<rotulo>.*?\S):\s*`(?P<valor>[^`]+)`", linha)
+        if m:
+            paths[m["rotulo"].replace("`", "").strip()] = os.path.expanduser(m["valor"])
+        elif linha.startswith("`") and linha.rstrip("`").endswith("/bin/python"):
+            paths["whisper_python"] = os.path.expanduser(linha.strip("`"))
     return paths
 
 
