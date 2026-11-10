@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/favicon.png">
+<title>Escolher a voz</title>
+<link rel="stylesheet" href="/fonts.css">
+<style>
+:root { --a: #35e6ff; --bg: #02070c; --tx: #d8f7ff; --dim: rgba(216,247,255,.55); --ok: #3dff7a; --bad: #ff6b6b; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: radial-gradient(ellipse at 50% 0%, #0b2733, var(--bg) 60%); color: var(--tx); font-family: "Oxanium", system-ui, sans-serif; min-height: 100vh; padding: 40px 20px 80px; }
+main { max-width: 860px; margin: 0 auto; }
+h1 { font-size: 34px; font-weight: 700; }
+.sub { color: var(--dim); margin: 6px 0 22px; font-size: 16px; }
+.top { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+button, label.btn { background: transparent; color: var(--a); border: 1.5px solid var(--a); border-radius: 10px; padding: 10px 16px; font: inherit; font-size: 15px; cursor: pointer; display: inline-block; }
+button:hover, label.btn:hover { background: color-mix(in srgb, var(--a) 18%, transparent); }
+button.go { background: var(--a); color: #00131a; font-weight: 700; }
+button.ghost { border-color: color-mix(in srgb, var(--a) 40%, transparent); color: var(--dim); }
+button:disabled { opacity: .45; cursor: default; }
+input[type=file] { display: none; }
+input[type=text], input[type=password], textarea {
+  width: 100%; max-width: 480px; background: rgba(0,0,0,.35); color: var(--tx);
+  border: 1px solid #ffffff30; border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 15px;
+}
+textarea { min-height: 72px; resize: vertical; }
+.lista { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
+.voz {
+  border: 1px solid color-mix(in srgb, var(--a) 30%, transparent);
+  background: color-mix(in srgb, var(--a) 5%, transparent);
+  border-radius: 12px; padding: 14px 16px;
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: space-between;
+}
+.voz.on { border-color: var(--a); box-shadow: inset 0 0 0 1px var(--a); }
+.voz h2 { font-size: 18px; font-weight: 600; }
+.voz p { color: var(--dim); font-size: 13px; margin-top: 4px; }
+.voz .acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.sec { margin-top: 28px; padding-top: 18px; border-top: 1px solid color-mix(in srgb, var(--a) 22%, transparent); }
+.sec h2 { font-size: 22px; margin-bottom: 8px; }
+.sec .ajuda { color: var(--dim); font-size: 14px; margin-bottom: 14px; line-height: 1.45; }
+.passos { color: var(--dim); font-size: 14px; margin: 0 0 14px 18px; line-height: 1.5; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.4; max-width: 560px; }
+.check input { margin-top: 3px; }
+.err { color: var(--bad); margin: 12px 0; font-size: 15px; }
+.warn { color: #ffd166; margin: 10px 0; font-size: 14px; line-height: 1.4; }
+.ok { color: var(--ok); font-size: 14px; margin: 8px 0; }
+.ai { font-size: 14px; color: var(--dim); border-left: 3px solid var(--a); padding: 6px 12px; margin-top: 28px; }
+.prog { color: var(--dim); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <button type="button" class="ghost" id="voltar">Conferência</button>
+    <button type="button" class="go" id="seguir">Continuar</button>
+  </div>
+  <h1>Escolher a voz</h1>
+  <p class="sub">A voz padrão já vem selecionada, sem login. Ouça as prontas ou use a sua voz.</p>
+  <div id="err" class="err" hidden></div>
+  <div id="lista" class="lista"></div>
+
+  <section class="sec" id="clonar">
+    <h2>Usar a minha voz</h2>
+    <p class="ajuda" id="cloneBlocked"></p>
+    <ol class="passos" id="termos"></ol>
+    <div class="row">
+      <input type="password" id="hfToken" placeholder="Cole o token do Hugging Face" autocomplete="off">
+      <button type="button" id="salvarToken">Salvar token</button>
+      <span class="ok" id="hfOk" hidden>Token salvo neste computador.</span>
+    </div>
+    <label class="check" style="margin: 16px 0">
+      <input type="checkbox" id="consent">
+      <span>Declaro que esta voz é minha ou que tenho autorização por escrito para usá-la.</span>
+    </label>
+    <p class="ajuda">Leia em voz natural, por cerca de 10 segundos, sem música de fundo:</p>
+    <p class="ajuda" id="fraseLeitura" style="color: var(--tx)"></p>
+    <div class="row">
+      <button type="button" id="gravar">Gravar</button>
+      <button type="button" id="parar" disabled>Parar</button>
+      <label class="btn">Enviar arquivo<input type="file" id="arquivo" accept="audio/*,.wav,.m4a,.mp3"></label>
+    </div>
+    <div class="row">
+      <input type="text" id="rotulo" placeholder="Nome da voz (metadados)">
+      <button type="button" class="go" id="salvarVoz">Salvar minha voz</button>
+    </div>
+    <div id="avisos" class="warn" hidden></div>
+    <p class="prog" id="statusClone"></p>
+    <audio id="player" controls style="margin-top:12px; width:100%; max-width:480px; display:none"></audio>
+  </section>
+
+  <p class="ai">A narração é gerada por inteligência artificial.</p>
+</main>
+<script src="/studio.js"></script>
+<script>
+const $ = (i) => document.getElementById(i);
+const q = new URLSearchParams(location.search);
+const pid = q.get("id");
+let estado = { voices: [], selected: null, preview_phrase: "" };
+let blobGravacao = null;
+let mediaRec = null;
+let chunks = [];
+
+const err = (m) => { $("err").hidden = !m; $("err").textContent = m || ""; };
+const avisos = (lista) => {
+  const el = $("avisos");
+  if (!lista || !lista.length) { el.hidden = true; el.textContent = ""; return; }
+  el.hidden = false;
+  el.textContent = lista.join(" ");
+};
+
+function desenhar() {
+  const box = $("lista");
+  box.innerHTML = "";
+  const ordem = [...estado.voices].sort((a, b) => {
+    if (a.id === estado.selected) return -1;
+    if (b.id === estado.selected) return 1;
+    if (a.kind === "padrao") return -1;
+    if (b.kind === "padrao") return 1;
+    return 0;
+  });
+  for (const v of ordem) {
+    if (v.kind === "clonada") continue; // clonadas aparecem após salvar; listamos prontas + padrão
+    const el = document.createElement("div");
+    el.className = "voz" + (v.id === estado.selected ? " on" : "");
+    const tipo = v.kind === "padrao" ? "Voz padrão" : (v.kind === "pronta" ? "Voz pronta" : "Minha voz");
+    const local = v.local ? "já neste computador" : "baixa ao escolher ou ouvir";
+    el.innerHTML =
+      "<div><h2></h2><p></p></div>" +
+      '<div class="acoes">' +
+        (v.kind === "pronta" || v.kind === "padrao" ? '<button type="button" class="ouvir">Ouvir</button>' : "") +
+        '<button type="button" class="usar">Usar</button>' +
+      "</div>";
+    el.querySelector("h2").textContent = v.label || v.name || v.id;
+    el.querySelector("p").textContent = tipo + " · " + local;
+    const btnUsar = el.querySelector(".usar");
+    btnUsar.onclick = () => escolher(v.id);
+    const btnOuvir = el.querySelector(".ouvir");
+    if (btnOuvir) btnOuvir.onclick = () => ouvir(v.id, btnOuvir);
+    box.appendChild(el);
+  }
+  // clonadas
+  for (const v of estado.voices.filter(x => x.kind === "clonada")) {
+    const el = document.createElement("div");
+    el.className = "voz" + (v.id === estado.selected ? " on" : "");
+    el.innerHTML = "<div><h2></h2><p>Minha voz</p></div><div class=\"acoes\"><button type=\"button\" class=\"usar\">Usar</button></div>";
+    el.querySelector("h2").textContent = v.label || v.id;
+    el.querySelector(".usar").onclick = () => escolher(v.id);
+    box.appendChild(el);
+  }
+  $("cloneBlocked").textContent = estado.clone_blocked || "";
+  $("termos").innerHTML = "";
+  (estado.terms_guide || []).forEach((t) => {
+    const li = document.createElement("li");
+    li.textContent = t;
+    $("termos").appendChild(li);
+  });
+  $("fraseLeitura").textContent = '"' + (estado.preview_phrase || "Olá. Esta é uma frase curta para ouvir a voz.") + '"';
+  $("hfOk").hidden = !estado.hf_logged_in;
+}
+
+async function carregar() {
+  const r = await studio.fetch("/api/voices");
+  estado = await r.json();
+  if (!r.ok) throw new Error(estado.error || "Não foi possível listar as vozes.");
+  desenhar();
+}
+
+async function escolher(id) {
+  err("");
+  avisos([]);
+  try {
+    const j = await studio.post("/api/voices/select", JSON.stringify({ voice_id: id }), {
+      "Content-Type": "application/json"
+    });
+    estado = j;
+    desenhar();
+  } catch (ex) {
+    err(ex.message || "Não foi possível escolher esta voz.");
+  }
+}
+
+async function ouvir(id, btn) {
+  err("");
+  const antigo = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Gerando...";
+  try {
+    const r = await studio.fetch("/api/voices/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Studio-Token": studio.token() },
+      body: JSON.stringify({ voice_id: id })
+    });
+    const tipo = r.headers.get("Content-Type") || "";
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      throw new Error(j.error || "Não foi possível ouvir esta voz.");
+    }
+    if (tipo.indexOf("audio") < 0) {
+      const j = await r.json().catch(() => ({}));
+      throw new Error(j.error || "Resposta inesperada ao ouvir a voz.");
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = $("player");
+    a.style.display = "block";
+    a.src = url;
+    a.play().catch(() => {});
+  } catch (ex) {
+    err(ex.message || "Não foi possível ouvir esta voz.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = antigo;
+  }
+}
+
+$("salvarToken").onclick = async () => {
+  err("");
+  try {
+    await studio.post("/api/hf-login", JSON.stringify({ token: $("hfToken").value }), {
+      "Content-Type": "application/json"
+    });
+    $("hfToken").value = "";
+    $("hfOk").hidden = false;
+    estado.hf_logged_in = true;
+  } catch (ex) {
+    err(ex.message || "Não foi possível salvar o token.");
+  }
+};
+
+$("gravar").onclick = async () => {
+  err("");
+  avisos([]);
+  $("statusClone").textContent = "";
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    chunks = [];
+    mediaRec = new MediaRecorder(stream);
+    mediaRec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+    mediaRec.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      blobGravacao = new Blob(chunks, { type: mediaRec.mimeType || "audio/webm" });
+      const url = URL.createObjectURL(blobGravacao);
+      const a = $("player");
+      a.style.display = "block";
+      a.src = url;
+      $("statusClone").textContent = "Gravação pronta. Ouça e salve se estiver boa.";
+    };
+    mediaRec.start();
+    $("gravar").disabled = true;
+    $("parar").disabled = false;
+    $("statusClone").textContent = "Gravando...";
+  } catch (ex) {
+    err("Não foi possível usar o microfone. Envie um arquivo de áudio.");
+  }
+};
+
+$("parar").onclick = () => {
+  if (mediaRec && mediaRec.state !== "inactive") mediaRec.stop();
+  $("gravar").disabled = false;
+  $("parar").disabled = true;
+};
+
+$("arquivo").onchange = (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  blobGravacao = f;
+  const url = URL.createObjectURL(f);
+  const a = $("player");
+  a.style.display = "block";
+  a.src = url;
+  $("statusClone").textContent = "Arquivo carregado.";
+  e.target.value = "";
+};
+
+$("salvarVoz").onclick = async () => {
+  err("");
+  avisos([]);
+  if (!$("consent").checked) {
+    err("Marque a declaração de que a voz é sua ou que você tem autorização.");
+    return;
+  }
+  if (!blobGravacao) {
+    err("Grave ou envie um arquivo antes de salvar.");
+    return;
+  }
+  try {
+    const j = await studio.post("/api/voices", blobGravacao, {
+      "X-Consent": "true",
+      "X-Voice-Label": $("rotulo").value || "Minha voz",
+      "X-Voice-Text": estado.preview_phrase || "",
+      "Content-Type": blobGravacao.type || "application/octet-stream"
+    });
+    avisos(j.warnings || []);
+    $("statusClone").textContent = j.warnings && j.warnings.length
+      ? "Voz salva, mas revise o aviso e regrave se puder."
+      : "Voz salva.";
+    await carregar();
+    estado.selected = j.id;
+    desenhar();
+  } catch (ex) {
+    err(ex.message || "Não foi possível salvar a voz.");
+  }
+};
+
+$("voltar").onclick = () => {
+  if (!pid) { location.href = studio.href("/home.html"); return; }
+  location.href = studio.href("/review.html?id=" + encodeURIComponent(pid));
+};
+
+$("seguir").onclick = async () => {
+  err("");
+  if (!pid) { err("Falta o livro. Volte ao início."); return; }
+  if (!estado.selected) { err("Escolha uma voz."); return; }
+  try {
+    await studio.post("/api/projects/" + encodeURIComponent(pid) + "/voice",
+      JSON.stringify({ voice_id: estado.selected }),
+      { "Content-Type": "application/json" });
+    location.href = studio.href("/dashboard.html?id=" + encodeURIComponent(pid));
+  } catch (ex) {
+    err(ex.message || "Não foi possível aplicar a voz ao livro.");
+  }
+};
+
+carregar().catch((ex) => err(ex.message || "Não foi possível abrir a tela de voz."));
+</script>
+</body>
+</html>

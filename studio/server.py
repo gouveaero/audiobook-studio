@@ -297,10 +297,33 @@ class H(SimpleHTTPRequestHandler):
                     return self.send_json({"error": erro_publico(str(e)), "code": e.code}, 400)
             if p == "/api/hf-login":
                 data = json.loads(self.body() or b"{}")
-                local_api.save_hf_token(data.get("token", ""))
-                return self.send_json({"ok": True})
+                try:
+                    local_api.save_hf_token(data.get("token", ""))
+                except ValueError as e:
+                    return self.send_json({"error": erro_publico(str(e))}, 400)
+                return self.send_json({"ok": True, "hf_logged_in": True})
             if p == "/api/models/download":
                 return self.send_json(local_api.start_model_download(baixar=baixar_modelo))
+            if p == "/api/voices/select":
+                o = json.loads(self.body() or b"{}")
+                try:
+                    return self.send_json(local_api.select_voice(o.get("voice_id") or ""))
+                except FileNotFoundError:
+                    return self.send_json({"error": "Voz não encontrada."}, 404)
+                except ConnectionError as e:
+                    return self.send_json({"error": erro_publico(str(e))}, 503)
+            if p == "/api/voices/preview":
+                o = json.loads(self.body() or b"{}")
+                try:
+                    wav = local_api.preview_voice(o.get("voice_id") or "")
+                except FileNotFoundError:
+                    return self.send_json({"error": "Voz não encontrada."}, 404)
+                except ConnectionError as e:
+                    return self.send_json({"error": erro_publico(str(e))}, 503)
+                except Exception:
+                    log_exception()
+                    return self.send_json({"error": erro_publico()}, 500)
+                return self.send_file_range(str(wav), "audio/wav")
             if p == "/api/voices":
                 consent = (self.headers.get("X-Consent") or "").lower() in ("1", "true", "yes", "sim")
                 label = self.headers.get("X-Voice-Label") or "Minha voz"

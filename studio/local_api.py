@@ -547,6 +547,27 @@ def start_model_download(baixar=None) -> dict:
     return get_models_status()
 
 
+FRASE_PREVIEW = "Olá. Esta é uma frase curta para ouvir a voz."
+AVISO_GRAVACAO_CURTA = (
+    "A gravação ficou muito curta. Grave de novo, falando por cerca de 10 segundos."
+)
+AVISO_GRAVACAO_BAIXA = (
+    "A gravação ficou muito baixa. Aproxime o microfone e grave de novo."
+)
+AVISO_GRAVACAO_RUIDO = (
+    "Há muito ruído de fundo. Grave de novo num lugar mais silencioso."
+)
+MSG_SEM_CONEXAO_VOZ = (
+    "Sem conexão com a internet. Conecte-se para baixar esta voz, "
+    "ou use a voz de reserva já baixada."
+)
+# Limiares da checagem de gravação (R25). Excesso de graves não avisa: só liga o EQ.
+GRAVACAO_MIN_SECS = 5.0
+GRAVACAO_RMS_MIN = 0.015
+GRAVACAO_PICO_MIN = 0.05
+GRAVACAO_RUIDO_FRACAO = 0.55  # energia fora da faixa de fala (300 Hz a 4 kHz)
+
+
 def voice_pack_dir() -> Path | None:
     env = os.environ.get("VOICE_PACK_DIR")
     if env and Path(env).is_dir():
@@ -555,14 +576,128 @@ def voice_pack_dir() -> Path | None:
     return bundled if bundled.is_dir() else None
 
 
-def list_voices() -> dict:
-    voices = []
-    selected = None
+def settings_path() -> Path:
+    ensure_dirs()
+    return app_home() / "settings.json"
+
+
+def load_settings() -> dict:
+    path = settings_path()
+    try:
+        return json.loads(path.read_text(encoding="utf8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_settings(data: dict) -> None:
+    path = settings_path()
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf8")
+
+
+def hf_logged_in() -> bool:
+    path = app_home() / "hf" / "token"
+    try:
+        return path.is_file() and bool(path.read_text(encoding="utf8").strip())
+    except OSError:
+        return False
+
+
+def embedding_local(nome: str) -> Path | None:
+    """Caminho local do embedding se já estiver no hf/ do app."""
+    hub = hub_cache_do_app()
+    if not hub.is_dir():
+        return None
+    alvo = f"{nome}.safetensors"
+    cands = [
+        p for p in hub.rglob(alvo)
+        if p.is_file() and "incomplete" not in p.name
+        and "embeddings" in p.parts and MODEL_ID in str(p)
+    ]
+    snaps = [p for p in cands if "snapshots" in p.parts]
+    escolhido = snaps or cands
+    return escolhido[0] if escolhido else None
+
+
+def garantir_embedding_voz(nome: str, on_progress=None) -> Path:
+    """Garante o embedding no hf/ do app; mensagem em português se estiver sem conexão."""
+    local = embedding_local(nome)
+    if local is not None:
+        if on_progress:
+            on_progress(1, 1)
+        return local
+    try:
+        return baixar_embedding_voz(nome, on_progress=on_progress)
+    except Exception as e:
+        msg = str(e).lower()
+        offline = (
+            "offlinemodeisenabled" in msg.replace("_", "").replace(" ", "")
+            or "offline" in msg
+            or "connection" in msg
+            or "network" in msg
+            or "failed to resolve" in msg
+            or "nodename nor servname" in msg
+            or "name or service not known" in msg
+            or "temporary failure" in msg
+        )
+        if offline or isinstance(e, (ConnectionError, TimeoutError, OSError)):
+            raise ConnectionError(MSG_SEM_CONEXAO_VOZ) from e
+        raise ConnectionError(MSG_SEM_CONEXAO_VOZ) from e
+
+
+def checar_gravacao(ref_wav: str | Path) -> list[str]:
+    """Avisos para regravar (R25). Excesso de graves NÃO entra aqui: só liga o EQ."""
+    import numpy as np
+    from studio.wavio import read_wav
+
+    samples, sr = read_wav(ref_wav)
+    samples = np.asarray(samples, dtype=np.float32).reshape(-1)
+    avisos: list[str] = []
+    if len(samples) < 2 or sr <= 0:
+        return [AVISO_GRAVACAO_CURTA, AVISO_GRAVACAO_BAIXA]
+    dur = len(samples) / float(sr)
+    if dur < GRAVACAO_MIN_SECS:
+        avisos.append(AVISO_GRAVACAO_CURTA)
+    rms = float(np.sqrt(np.mean(samples * samples))) if len(samples) else 0.0
+    pico = float(np.max(np.abs(samples))) if len(samples) else 0.0
+    if rms < GRAVACAO_RMS_MIN or pico < GRAVACAO_PICO_MIN:
+        avisos.append(AVISO_GRAVACAO_BAIXA)
+    # ruído: muita energia aguda fora da fala. Graves NÃO contam (R25: só ligam o EQ).
+    espec = np.fft.rfft(samples)
+    pot = (espec.real ** 2 + espec.imag ** 2)
+    freqs = np.fft.rfftfreq(len(samples), d=1.0 / sr)
+    total = float(pot.sum())
+    if total > 0:
+        agudos = float(pot[freqs > 4000.0].sum())
+        if (agudos / total) > GRAVACAO_RUIDO_FRACAO and rms >= GRAVACAO_RMS_MIN:
+            avisos.append(AVISO_GRAVACAO_RUIDO)
+    return avisos
+
+
+def _ids_voz_conhecidos() -> set[str]:
+    ids = set(VOZES_PRONTAS)
     pack = voice_pack_dir()
     if pack and (pack / "manifest.json").is_file():
+        try:
+            man = json.loads((pack / "manifest.json").read_text(encoding="utf8"))
+            ids.add(man.get("id", "padrao"))
+        except (OSError, ValueError):
+            pass
+    vroot = app_home() / "voices"
+    if vroot.is_dir():
+        for d in vroot.iterdir():
+            if (d / "manifest.json").is_file():
+                ids.add(d.name)
+    return ids
+
+
+def list_voices() -> dict:
+    voices = []
+    pack = voice_pack_dir()
+    pack_id = None
+    if pack and (pack / "manifest.json").is_file():
         man = json.loads((pack / "manifest.json").read_text(encoding="utf8"))
-        voices.append({**man, "kind": "padrao"})
-        selected = man.get("id", "padrao")
+        pack_id = man.get("id", "padrao")
+        voices.append({**man, "kind": "padrao", "local": True})
     for name in VOZES_PRONTAS:
         voices.append({
             "id": name,
@@ -571,9 +706,8 @@ def list_voices() -> dict:
             "engine": "pocket",
             "model": MODEL_ID,
             "kind": "pronta",
+            "local": embedding_local(name) is not None,
         })
-    if not selected:
-        selected = VOICE_FALLBACK
     # vozes clonadas do usuário
     vroot = app_home() / "voices"
     if vroot.is_dir():
@@ -581,8 +715,102 @@ def list_voices() -> dict:
             man_path = d / "manifest.json"
             if man_path.is_file():
                 man = json.loads(man_path.read_text(encoding="utf8"))
-                voices.insert(0 if man.get("id") == selected else len(voices), {**man, "kind": "clonada"})
-    return {"voices": voices, "selected": selected, "ai_notice": "A narração é gerada por inteligência artificial."}
+                voices.append({**man, "kind": "clonada", "local": True})
+    prefer = (load_settings().get("voice_id") or "").strip()
+    ids = {v["id"] for v in voices}
+    if prefer and prefer in ids:
+        selected = prefer
+    elif pack_id:
+        selected = pack_id
+    else:
+        selected = VOICE_FALLBACK
+    return {
+        "voices": voices,
+        "selected": selected,
+        "hf_logged_in": hf_logged_in(),
+        "preview_phrase": FRASE_PREVIEW,
+        "ai_notice": "A narração é gerada por inteligência artificial.",
+        "clone_blocked": (
+            "Para usar a sua voz, entre na sua conta do Hugging Face e aceite os termos "
+            "do Pocket TTS. Sem isso, só a voz padrão e as vozes prontas funcionam."
+        ),
+        "terms_guide": [
+            "Abra o Hugging Face no navegador e entre na sua conta (ou crie uma).",
+            "Aceite os termos do modelo Pocket TTS (kyutai/pocket-tts).",
+            "Crie um token de acesso e cole abaixo. O token fica só neste computador.",
+        ],
+    }
+
+
+def select_voice(voice_id: str, *, baixar: bool = True) -> dict:
+    """Marca a voz escolhida; baixa embedding de voz pronta se ainda não estiver local (T17)."""
+    voice_id = (voice_id or "").strip()
+    if not voice_id or voice_id not in _ids_voz_conhecidos():
+        raise FileNotFoundError("Voz não encontrada.")
+    if baixar and voice_id in VOZES_PRONTAS:
+        garantir_embedding_voz(voice_id)
+    cfg = load_settings()
+    cfg["voice_id"] = voice_id
+    save_settings(cfg)
+    return list_voices()
+
+
+def motor_preview():
+    """Motor para ouvir a amostra. Testes: AUDIOBOOK_PREVIEW_MOTOR=tests.fake_engine:FakeEngine."""
+    from studio.engines import load_engine
+    nome = (os.environ.get("AUDIOBOOK_PREVIEW_MOTOR") or "pocket").strip()
+    return load_engine(nome, device=os.environ.get("AUDIOBOOK_PREVIEW_DEVICE") or "cpu")
+
+
+def _manifest_voz(voice_id: str) -> dict:
+    pack = voice_pack_dir()
+    if pack and (pack / "manifest.json").is_file():
+        man = json.loads((pack / "manifest.json").read_text(encoding="utf8"))
+        if man.get("id") == voice_id:
+            out = dict(man)
+            # caminho absoluto do arquivo exportado, se existir
+            if out.get("file"):
+                f = pack / out["file"]
+                if f.is_file():
+                    out["file"] = str(f)
+            return out
+    cand = app_home() / "voices" / voice_id / "manifest.json"
+    if cand.is_file():
+        man = json.loads(cand.read_text(encoding="utf8"))
+        out = dict(man)
+        if out.get("file"):
+            f = cand.parent / out["file"]
+            if f.is_file():
+                out["file"] = str(f)
+        if out.get("ref_wav") is None and (cand.parent / "ref.wav").is_file():
+            out["ref_wav"] = str(cand.parent / "ref.wav")
+        return out
+    if voice_id in VOZES_PRONTAS:
+        return {"model": MODEL_ID, "name": voice_id, "id": voice_id, "engine": "pocket"}
+    raise FileNotFoundError("Voz não encontrada.")
+
+
+def preview_voice(voice_id: str, *, engine=None) -> Path:
+    """Gera WAV curto com o motor (falso nos testes; Pocket no @pytest.mark.model)."""
+    from studio.wavio import write_wav
+
+    voice_id = (voice_id or "").strip()
+    man = _manifest_voz(voice_id)
+    eng = engine or motor_preview()
+    # voz pronta: baixa embedding sob demanda (exceto motor falso, que não precisa)
+    if man.get("name") and getattr(eng, "id", "") != "fake":
+        local = garantir_embedding_voz(man["name"])
+        _hf_home_do_app()
+        # passa caminho local para não depender de rede no get_state
+        man = {**man, "file": str(local)}
+        man.pop("name", None)
+    eng.load(man)
+    audio = eng.synth(FRASE_PREVIEW, 0)
+    tmp = app_home() / "tmp"
+    tmp.mkdir(parents=True, exist_ok=True)
+    out = tmp / f"preview-{slugify(voice_id)}.wav"
+    write_wav(str(out), audio, eng.sample_rate)
+    return out
 
 
 def save_cloned_voice(audio_bytes: bytes, *, label: str, text: str, consent: bool) -> dict:
@@ -613,6 +841,7 @@ def save_cloned_voice(audio_bytes: bytes, *, label: str, text: str, consent: boo
             shutil.rmtree(vdir, ignore_errors=True)
             raise ValueError("Não foi possível ler o áudio. Envie um arquivo WAV ou M4A.")
     (vdir / "ref.txt").write_text((text or "").strip() + "\n", encoding="utf8")
+    avisos = checar_gravacao(ref)
     usar_eq = bool(eq_por_graves(str(ref)))
     man = {
         "id": vid,
@@ -624,7 +853,10 @@ def save_cloned_voice(audio_bytes: bytes, *, label: str, text: str, consent: boo
         "kind": "clonada",
     }
     (vdir / "manifest.json").write_text(json.dumps(man, ensure_ascii=False, indent=1), encoding="utf8")
-    return {"id": vid, "label": man["label"], "eq": usar_eq}
+    cfg = load_settings()
+    cfg["voice_id"] = vid
+    save_settings(cfg)
+    return {"id": vid, "label": man["label"], "eq": usar_eq, "warnings": avisos}
 
 
 def attach_voice_to_project(pid: str, voice_id: str) -> None:
