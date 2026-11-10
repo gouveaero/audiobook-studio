@@ -307,6 +307,10 @@ def test_models_download_real_e_motor_offline(tmp_path):
     for p in res["paths"]:
         assert p.startswith(str(casa / "hf")), p
         assert Path(p).is_file()
+    from studio.brand import VOICE_FALLBACK
+    assert any(
+        "embeddings" in p and f"{VOICE_FALLBACK}.safetensors" in p for p in res["paths"]
+    ), res["paths"]
     assert sum(res["sizes"]) > 100_000_000
     assert sum(res["sizes"]) == visto[-1][0] or abs(sum(res["sizes"]) - visto[-1][1]) < 1024 * 1024
     assert not (casa / "hf" / "token").exists()

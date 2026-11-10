@@ -32,13 +32,26 @@ MODEL_ID = "portuguese_24l"
 # Ver pocket_tts/config/portuguese_24l.yaml → weights_path_without_voice_cloning + tokenizer.
 MODEL_REPO = "kyutai/pocket-tts-without-voice-cloning"
 MODEL_REVISION = "4e1e0a3e611c51c0b4ed8174fc10f32a54644303"
-MODEL_FILES = (
-    f"languages/{MODEL_ID}/model.safetensors",
-    f"languages/{MODEL_ID}/tokenizer.json",
-)
-# Tamanho medido no download da T2 (~672 MB); o download real atualiza com o Content-Length.
+# get_predefined_voice(language, name) em pocket_tts/utils/utils.py
+EMBEDDING_REVISION = "a7056f505a4a8ca72d8b5fb1440071d6f1a35739"
+# (repo, filename, revision) — primeiro uso: modelo + tokenizer + voz de reserva (R22, R35).
+def arquivos_primeiro_uso():
+    return (
+        (MODEL_REPO, f"languages/{MODEL_ID}/model.safetensors", MODEL_REVISION),
+        (MODEL_REPO, f"languages/{MODEL_ID}/tokenizer.json", MODEL_REVISION),
+        (MODEL_REPO, f"languages/{MODEL_ID}/embeddings/{VOICE_FALLBACK}.safetensors", EMBEDDING_REVISION),
+    )
+
+
+MODEL_FILES = tuple(fn for _, fn, _ in arquivos_primeiro_uso())
+# Tamanho medido (~672 MB do modelo + embedding da voz de reserva); o download real atualiza.
 MODEL_TOTAL_BYTES = 672 * 1024 * 1024
 APP_VERSION = "0.1.0-beta"
+
+
+def caminho_embedding_voz(nome: str) -> str:
+    """Caminho no Hub do embedding de uma voz pronta (pocket_tts.get_predefined_voice)."""
+    return f"languages/{MODEL_ID}/embeddings/{nome}.safetensors"
 
 
 def slugify(texto: str) -> str:
@@ -398,13 +411,16 @@ def bytes_no_hub(hub: Path | None = None) -> int:
 
 
 def caminhos_modelo_no_app() -> list[Path]:
-    """Arquivos finais do modelo dentro de AUDIOBOOK_STUDIO_HOME/hf/ (não no cache global)."""
+    """Arquivos finais do primeiro uso dentro de AUDIOBOOK_STUDIO_HOME/hf/ (não no cache global)."""
     hub = hub_cache_do_app()
     achados = []
-    for fn in MODEL_FILES:
+    for _, fn, _ in arquivos_primeiro_uso():
         nome = Path(fn).name
         cands = [p for p in hub.rglob(nome)
                  if p.is_file() and "incomplete" not in p.name and MODEL_ID in str(p)]
+        # embedding fica em .../embeddings/rafael.safetensors
+        if "embeddings/" in fn:
+            cands = [p for p in cands if "embeddings" in p.parts]
         snaps = [p for p in cands if "snapshots" in p.parts]
         escolhido = (snaps or cands)
         if escolhido:
@@ -413,25 +429,48 @@ def caminhos_modelo_no_app() -> list[Path]:
 
 
 def tamanho_modelo_remoto() -> int:
-    """Soma o tamanho real dos arquivos que o Pocket baixa sem login."""
+    """Soma o tamanho real dos arquivos do primeiro uso (modelo + tokenizer + voz de reserva)."""
     from huggingface_hub import hf_hub_url, get_hf_file_metadata
     _hf_home_do_app()
     total = 0
-    for fn in MODEL_FILES:
-        url = hf_hub_url(MODEL_REPO, fn, revision=MODEL_REVISION)
+    for repo, fn, rev in arquivos_primeiro_uso():
+        url = hf_hub_url(repo, fn, revision=rev)
         meta = get_hf_file_metadata(url, token=False)
         total += int(meta.size or 0)
     return total or MODEL_TOTAL_BYTES
 
 
+def baixar_arquivo_hub(filename: str, revision: str, *, repo: str = MODEL_REPO) -> Path:
+    """Baixa um arquivo do Hub para o hf/ do app (usado no primeiro uso e na T17)."""
+    from huggingface_hub import hf_hub_download
+    hub = hub_cache_do_app()
+    return Path(hf_hub_download(
+        repo_id=repo,
+        filename=filename,
+        revision=revision,
+        cache_dir=str(hub),
+        token=False,
+        force_download=False,
+    ))
+
+
+def baixar_embedding_voz(nome: str, on_progress=None) -> Path:
+    """Baixa o embedding de uma voz pronta (demais vozes sob demanda na T17)."""
+    fn = caminho_embedding_voz(nome)
+    if on_progress:
+        on_progress(0, 1)
+    path = baixar_arquivo_hub(fn, EMBEDDING_REVISION)
+    if on_progress:
+        on_progress(1, 1)
+    return path
+
+
 def baixar_modelo(on_progress) -> None:
-    """Baixa os pesos sem clonagem só para hf/ do app, com progresso em bytes.
+    """Baixa pesos sem clonagem + embedding da voz de reserva só para hf/ do app.
 
     Ignora ~/.cache/huggingface e qualquer HF_HOME herdado. token=False: sem login.
-    É o que TTSModel.load_model(language=portuguese_24l) baixa sem login; depois carrega offline.
+    Depois disso o motor carrega offline com a voz de reserva (R22, R35).
     """
-    from huggingface_hub import hf_hub_download
-
     hf = _hf_home_do_app()
     hub = hf / "hub"
     try:
@@ -453,15 +492,8 @@ def baixar_modelo(on_progress) -> None:
     watcher = threading.Thread(target=watch, daemon=True)
     watcher.start()
     try:
-        for fn in MODEL_FILES:
-            hf_hub_download(
-                repo_id=MODEL_REPO,
-                filename=fn,
-                revision=MODEL_REVISION,
-                cache_dir=str(hub),
-                token=False,
-                force_download=False,
-            )
+        for repo, fn, rev in arquivos_primeiro_uso():
+            baixar_arquivo_hub(fn, rev, repo=repo)
             done = bytes_no_hub(hub)
             ultimo[0] = max(ultimo[0], done)
             on_progress(min(ultimo[0], total), total)
