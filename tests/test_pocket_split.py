@@ -102,3 +102,20 @@ def test_capitulo_de_referencia_sem_aviso_de_corte(caplog, tmp_path):
     assert avisos == []
     assert n_tokens_max <= TARGET_TOKENS
     assert " ".join(e.split(" ".join(trechos))).split() == " ".join(trechos).split()
+
+
+def test_palavras_em_maiusculas_vao_em_minusculas():
+    """Medido no capítulo de referência: "GUERRA É PAZ" e "ABAIXO O GRANDE IRMÃO" saem lentos e perdem palavras."""
+    from studio.engines.pocket import cortar
+    assert cortar("GUERRA É PAZ", palavras, 40) == ["Guerra é paz"]
+    assert cortar("O GRANDE IRMÃO ESTÁ DE OLHO EM VOCÊ, dizia o letreiro.", palavras, 40) == \
+        ["O grande irmão está de olho em você, dizia o letreiro."]
+    assert cortar("Winston Smith viu a ONU e o Partido.", palavras, 40) == ["Winston Smith viu a onu e o Partido."]
+    assert cortar("A letra A e o pronome É ficam.", palavras, 40) == ["A letra A e o pronome É ficam."]
+
+
+def test_faixa_de_ritmo_calibrada_no_capitulo_de_referencia():
+    """Calibrada nos 328 pedaços de 60+ caracteres do capítulo 03 (T6): perdas apareceram acima de 20 car/s;
+    12 a 19,5 refaz cerca de 6% dos pedaços."""
+    from studio.engines.pocket import PocketEngine
+    assert PocketEngine.rate_range == (12.0, 19.5)

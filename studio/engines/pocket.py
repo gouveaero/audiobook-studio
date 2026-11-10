@@ -55,10 +55,31 @@ def _agrupar(partes, n_tokens, alvo):
     return grupos
 
 
+_PALAVRA = re.compile(r"[^\W\d_]+")
+
+
+def sem_caixa_alta(texto):
+    """Palavras em maiúsculas vão para minúsculas: o Pocket as lê devagar e perde palavras. Vale para palavras de
+    duas letras ou mais e para letras sozinhas vizinhas delas ("GUERRA É PAZ"); "a letra A" fica. A primeira letra
+    do texto continua maiúscula."""
+    ms = list(_PALAVRA.finditer(texto))
+    alta = [m.group(0).isupper() for m in ms]
+    longa = [a and len(m.group(0)) >= 2 for a, m in zip(alta, ms)]
+    partes, fim = [], 0
+    for i, m in enumerate(ms):
+        vizinha_longa = (i > 0 and longa[i - 1]) or (i + 1 < len(ms) and longa[i + 1])
+        if alta[i] and (longa[i] or vizinha_longa):
+            partes += [texto[fim:m.start()], m.group(0).lower()]; fim = m.end()
+    novo = "".join(partes) + texto[fim:]
+    if novo != texto and novo[:1].islower() and texto[:1].isupper():
+        novo = novo[0].upper() + novo[1:]
+    return novo
+
+
 def cortar(texto, n_tokens, alvo=TARGET_TOKENS):
     """Pedaços de até `alvo` tokens, na ordem de preferência do design: fim de frase; vírgula, ponto e vírgula
     ou dois pontos; e fronteira de palavra como último recurso. `n_tokens(texto)` conta como o modelo conta."""
-    texto = " ".join(texto.split())
+    texto = sem_caixa_alta(" ".join(texto.split()))
     if not texto:
         return []
     if n_tokens(texto) <= alvo:
@@ -80,7 +101,7 @@ class PocketEngine(Engine):
     model_name = "portuguese_24l"
     sample_rate = 24000
     chars_per_second = 16.6
-    rate_range = (10.0, 22.0)  # provisória; calibrada na T6
+    rate_range = (12.0, 19.5)  # calibrada no capítulo de referência (T6): perdas apareceram acima de 20 car/s
 
     def __init__(self, device="cpu", **options):
         super().__init__(device=device, **options)
