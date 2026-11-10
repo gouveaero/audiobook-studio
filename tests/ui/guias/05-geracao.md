@@ -14,9 +14,10 @@ Passos:
 5. Clicar em "Cancelar" -> esperado: a geração para com estado `cancelado` (ou `cancelando` -> `cancelado`), e os trechos `.wav` já prontos permanecem preservados em `work/chunks/` (R14).
 
 Capturas:
-- Passo 1: `tests/ui/capturas/05-geracao-rodando.png`
-- Passo 2: `tests/ui/capturas/05-geracao-pausada.png`
-- Passo 5: `tests/ui/capturas/05-geracao-cancelada.png`
+- Passo 1 (`gerando`): `tests/ui/capturas/05-geracao-rodando.png`
+- Passo 2 (`pausado`): `tests/ui/capturas/05-geracao-pausada.png`
+- Passo 5 (`cancelado`): `tests/ui/capturas/05-geracao-cancelada.png`
+- Estado `erro`: `tests/ui/capturas/05-geracao-erro.png`
 
 Critério de aprovação:
 - Pausar, continuar e cancelar funcionam pela tela e preservam os arquivos já gerados (R14).
@@ -24,10 +25,13 @@ Critério de aprovação:
 - O tempo restante aparece e muda durante a geração (R18).
 - A tela não exibe textos falsos de nuvem quando a geração é 100% local nem estados contraditórios.
 
-Resultado: reprovado.
-- Passo 1 (Iniciar e tempo restante, R18): A geração iniciou automaticamente (`status: "gerando"`) e o tempo restante (`#etaTxt`) evoluiu conforme a velocidade medida (`restam ~3 min` -> `restam ~18 s` -> `restam ~15 s` -> `restam ~12 s`). Porém, a tela exibe estado que não bate com a realidade local: grava `[...] conectando à nuvem...` no quadro `#log` (`ui/dashboard.html` linha 226) e mostra o medidor `NVIDIA A100, GPU 0%` (`ui/dashboard.html` linhas 117 e 260) mesmo em geração local no Mac (`tests/ui/capturas/05-geracao-rodando.png`).
-- Passo 2 e 3 (Pausar e continuar, R14): Ao clicar em "Pausar", o estado mudou para `pausado`, `#liveTxt` exibiu `pausado` e o botão "Continuar" habilitou (`tests/ui/capturas/05-geracao-pausada.png`); ao clicar em "Continuar", voltou a `gerando`.
-- Passo 4 (Fechar e reabrir a janela, R15): Ao sair para `home.html` e reabrir `dashboard.html?id=livro-sem-sumario`, a geração continuou em segundo plano (`chars_done` avançou de 492 para 743) e a tela mostrou o progresso real sem reiniciar.
-- Passo 5 (Cancelar, R14 - REPROVADO por estado que não bate com a realidade):
-  - Esperado: ao cancelar, o processo para preservando os trechos prontos e a tela mostra o estado `cancelado`, zera/oculta a estimativa de tempo restante e permite retomar ou voltar.
-  - Obtido: o backend encerrou o processo (`status: "cancelado"`) e preservou os 10 arquivos `.wav` em `work/chunks/`, mas `ui/dashboard.html` (linha 155) continua exibindo `● ao vivo` em `#liveTxt`, mantém `restam ~7 s` em `#etaTxt`, deixa os 3 botões (`Pausar`, `Continuar`, `Cancelar`) desabilitados sem opção de retomar ou voltar ao início, e segue imprimindo `gpu 0%  nuvem 0,0x  local 0,6x` no `#log` (`tests/ui/capturas/05-geracao-cancelada.png`).
+Resultado: aprovado na 2ª rodada.
+- Histórico (1ª rodada): reprovado porque no estado `cancelado` a tela mantinha `● ao vivo`, `restam ~7 s` e desabilitava os 3 botões sem permitir retomar/voltar, além de exibir `conectando à nuvem...` e `NVIDIA A100, GPU 0%` na geração local.
+- 2ª rodada (todos os estados conferidos):
+  - `gerando`: `#liveTxt` exibe `ao vivo` (`.live = true`), `#gc` (medidor de nuvem) oculto (`hidden = true`), `#log` registra `"geração local pronta para começar"` e `"ritmo local ...×"`, e `#etaTxt` evolui (`restam ~24 s` -> `restam ~14 s` -> `restam ~9 s`) (`tests/ui/capturas/05-geracao-rodando.png`).
+  - `pausado`: `#liveTxt` muda para `pausado` (`.live = false`), botão `"Continuar"` (`#btnResume`) habilita e botão `"Voltar ao início"` (`#btnHome`) fica visível (`tests/ui/capturas/05-geracao-pausada.png`).
+  - Fechar e reabrir (`R15`): navegar para `home.html` e voltar a `dashboard.html` manteve a geração rodando (`chars_done` avançou de 374 para 743).
+  - `cancelado`: `#liveTxt` muda para `cancelado` (`.live = false`), `#etaTxt` fica vazio (`""`), `"Pausar"` e `"Cancelar"` ficam ocultos, `"Continuar a geração"` (`#btnResume`) fica habilitado, `"Voltar ao início"` (`#btnHome`) fica visível e os trechos `.wav` prontos são preservados (`tests/ui/capturas/05-geracao-cancelada.png`).
+  - `montando`: `#liveTxt` exibe `montando` (`.live = false`) com botões de controle desabilitados durante a montagem final.
+  - `erro`: `#liveTxt` exibe `erro`, `#dashErr` mostra mensagem limpa sem nome de exceção nem caminho de log (`"A geração falhou. Veja o log para o detalhe."`), com botões `"Tentar de novo"` e `"Voltar ao início"` (`tests/ui/capturas/05-geracao-erro.png`).
+  - `pronto`: ao clicar em `"Tentar de novo"` / `"Continuar a geração"`, retomou do trecho parado, concluiu a montagem em `t=5 s` e redirecionou automaticamente para `ready.html?id=livro-sem-sumario`.
