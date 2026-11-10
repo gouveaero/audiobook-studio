@@ -38,11 +38,12 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 
 ## Fechamento (T25)
 
-Clone limpo da `beta-desktop` no commit aa26a8f, fora do repositório. `scripts/build_mac.sh` e depois `scripts/verify_beta.sh` com as três camadas, `LOCAL_MD`, `VOICE_PACK_DIR` e `EVIDENCE_PATH` apontando para fora do clone. Rodado pelo Maestro em 10/11/2026.
+Clone limpo da `beta-desktop`, fora do repositório. `scripts/build_mac.sh` e depois `scripts/verify_beta.sh` com as três camadas, `LOCAL_MD`, `VOICE_PACK_DIR` e `EVIDENCE_PATH` apontando para fora do clone. Rodado pelo Maestro em 10/11/2026, duas vezes.
 
-- **Resultado: incompleto.** `verify_beta.sh` saiu com erro por um único teste, o de R11 (T6 sem marcar, B12 em `bloqueios.md`).
-- Camada base: 229 passaram. Camada de modelo: 6 passaram e 1 falhou (R11) em 53 min 51 s. Camada de pacote: 4 passaram.
-- Instalador: `.dmg` de 339.092.834 bytes (0,316 GB). Cópia em `dist/Audiobook-Studio.dmg`, fora do git.
+- **Primeira rodada (commit aa26a8f): incompleto.** Base 229 passaram, pacote 4 passaram, modelo 6 passaram e 1 falhou: R11, com OmniVoice 45 (0,712%), Pocket 94 (1,486%), teto 1,212%.
+- **Segunda rodada (commit f9b6768), depois da correção do fim de fala (B15): completo.** `verify_beta.sh` passou. Base: 232 passaram. Modelo: 8 passaram. Pacote: 4 passaram.
+- Na segunda rodada, o teste de R11 reaproveitou o capítulo de referência gerado 40 minutos antes pelo Maestro com o mesmo código do motor (commit 6577d04; a pasta de referência é retomada quando o código do motor não muda), por isso a camada de modelo levou 3 minutos. Essa geração, de 33 min 52 s, está na tabela de requisitos acima.
+- Instalador da segunda rodada: `.dmg` de 339.823.163 bytes (0,316 GB). Cópia em `dist/Audiobook-Studio.dmg`, fora do git.
 - Autoteste na janela real: aprovado, sem som, com os guias 2, 4, 5 e 6; "Salvar M4B" clicado na janela e arquivo conferido na pasta Downloads do ambiente limpo.
 
 | Requisito | Teste | Resultado |
@@ -50,8 +51,8 @@ Clone limpo da `beta-desktop` no commit aa26a8f, fora do repositório. `scripts/
 | R1 a R8 | `tests/test_prepare_book.py`; guias 2 e 3 | passou |
 | R9 | `test_rotas_api.py`, `test_telas.py`, `test_retomada.py`, `test_assemble.py`; guia 2 | passou |
 | R10 | `test_pocket_split.py`, `test_referencia.py` (modelo) | passou: 0 avisos em 425 pedaços |
-| R11 | `test_medicao.py`, `test_referencia.py` (modelo) | **FALHOU**: OmniVoice perdeu 45 de 6.324 (0,712%), Pocket perdeu 94 (1,486%), teto 1,212%. Ver B12 |
-| R12 | `test_referencia.py` (modelo) | mecanismo funcionou: 21 pedaços refeitos, 2 fora da faixa depois de 4 tentativas, trechos 35 e 62 marcados. O teste em que ele está falha por R11 |
+| R11 | `test_medicao.py`, `test_referencia.py`, `test_pocket_fim_de_fala.py` (modelo) | passou: OmniVoice perdeu 45 de 6.324 (0,712%), Pocket perdeu 66 (1,044%), teto 1,212%. A variação do Whisper entre rodadas é de cerca de 10 palavras (B11) |
+| R12 | `test_referencia.py` (modelo) | passou: 4 pedaços refeitos, 1 fora da faixa depois de 4 tentativas, trecho 62 marcado |
 | R13 | `test_retomada.py` | passou. Não verificado: retomada com o Pocket real |
 | R14, R15, R18 | `test_tarefa.py`, `test_painel.py`, `test_dashboard_estados.py`; guia 5 | passou |
 | R16, R17 | `test_tarefa.py` | passou. Não verificado no app empacotado |
@@ -342,4 +343,14 @@ Guias de navegação: os 10 aprovados (1 a 9 com motor falso; o 10 de ponta a po
 - Commit: 6577d04 (com alterações não commitadas)
 - Camadas pedidas: base
 - Camada `base`: passou. 232 passed, 12 deselected in 67.78s (0:01:07)
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 20:30
+- Commit: f9b6768
+- Camadas pedidas: base model package
+- Camada `base`: passou. 232 passed, 12 deselected in 66.72s (0:01:06)
+- Camada `model`: passou. 8 passed, 236 deselected in 179.86s (0:02:59)
+- Camada `package`: passou. 4 passed, 240 deselected in 73.07s (0:01:13)
 - Resultado: passou

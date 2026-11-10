@@ -48,4 +48,4 @@ Marcação de testes: sem marca, rodam sem modelo e em segundos (motor falso, EP
 
 ## Fechamento
 
-- [x] **T25.** Rodar `scripts/verify_beta.sh` de um clone limpo da branch, com `LOCAL_MD`, `VOICE_PACK_DIR` e `EVIDENCE_PATH` apontando para fora do clone, e `EVIDENCE_PATH` para `docs/specs/beta-desktop/evidencia.md` no repositório original. Escrever nela cada requisito com o teste correspondente e o resultado, e listar H1 e H3 a H6 como não verificados. **Rodada em 10/11/2026:** `verify_beta.sh` saiu com erro só por R11 (T6, B12); as camadas base e de pacote passaram. Resultado: incompleto.
+- [x] **T25.** Rodar `scripts/verify_beta.sh` de um clone limpo da branch, com `LOCAL_MD`, `VOICE_PACK_DIR` e `EVIDENCE_PATH` apontando para fora do clone, e `EVIDENCE_PATH` para `docs/specs/beta-desktop/evidencia.md` no repositório original. Escrever nela cada requisito com o teste correspondente e o resultado, e listar H1 e H3 a H6 como não verificados. **Rodadas em 10/11/2026:** a primeira saiu com erro só por R11; a segunda, depois da correção do fim de fala (B15), passou nas três camadas. Resultado: completo.
