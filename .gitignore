@@ -10,3 +10,10 @@ __pycache__/
 *.pdf
 .env
 *.local.json
+
+# beta
+build/
+dist/
+*.safetensors
+docs/specs/beta-desktop/local.md
+docs/specs/beta-desktop/lista-de-espera.md

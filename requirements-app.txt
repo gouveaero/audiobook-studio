@@ -1,0 +1,7 @@
+# Dependências do app para computador (beta). Python 3.12, instaladas com uv em .venv/.
+# O OmniVoice não entra aqui: ele continua no requirements.txt, para a linha de comando e a nuvem.
+pocket-tts==4.0.1
+num2words>=0.5.13
+numpy
+pywebview==6.2.1
+# sistema, no desenvolvimento: ffmpeg e ffprobe no PATH (o instalador leva os dele)
