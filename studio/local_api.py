@@ -456,6 +456,60 @@ def redo_chunk(pid: str, chapter: str, chunk: int) -> dict:
     })
 
 
+# Último M4B copiado para Downloads por projeto (para "Mostrar no Finder", R32).
+_last_saved_m4b: dict[str, Path] = {}
+
+
+def _destino_unico(pasta: Path, nome: str) -> Path:
+    """Se o nome já existe, acrescente ' 2', ' 3', ... antes da extensão."""
+    dest = pasta / nome
+    if not dest.exists():
+        return dest
+    stem = Path(nome).stem
+    suffix = Path(nome).suffix
+    n = 2
+    while True:
+        cand = pasta / f"{stem} {n}{suffix}"
+        if not cand.exists():
+            return cand
+        n += 1
+
+
+def save_m4b_to_downloads(pid: str) -> dict:
+    """Copia o M4B do projeto para ~/Downloads. Devolve só nome e pasta (R32, R38)."""
+    p = project_path(pid)
+    if not p:
+        raise FileNotFoundError(pid)
+    audiobook = p / "audiobook"
+    m4b = next(audiobook.glob("*.m4b"), None) if audiobook.is_dir() else None
+    if not m4b or not m4b.is_file():
+        raise ValueError("M4B ainda não está pronto. Monte o audiolivro antes de salvar.")
+    downloads = Path.home() / "Downloads"
+    try:
+        downloads.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise ValueError(f"Não foi possível abrir a pasta Downloads: {e}") from e
+    dest = _destino_unico(downloads, m4b.name)
+    try:
+        shutil.copy2(m4b, dest)
+    except OSError as e:
+        raise ValueError(f"Não foi possível salvar o M4B: {e}") from e
+    _last_saved_m4b[pid] = dest
+    return {"ok": True, "nome": dest.name, "pasta": "Downloads"}
+
+
+def reveal_target(pid: str) -> Path:
+    """Arquivo ou pasta a revelar no Finder: último salvo, senão o M4B do projeto."""
+    p = project_path(pid)
+    if not p:
+        raise FileNotFoundError(pid)
+    salvo = _last_saved_m4b.get(pid)
+    if salvo and salvo.is_file():
+        return salvo
+    m4b = next((p / "audiobook").glob("*.m4b"), None) if (p / "audiobook").is_dir() else None
+    return m4b or (p / "audiobook")
+
+
 def save_hf_token(token: str) -> None:
     ensure_dirs()
     token = (token or "").strip()

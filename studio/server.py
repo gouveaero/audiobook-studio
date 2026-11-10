@@ -417,15 +417,14 @@ class H(SimpleHTTPRequestHandler):
                     o = json.loads(self.body() or b"{}")
                     out = montar_projeto(str(local_api.project_path(pid)), video=bool(o.get("video")))
                     return self.send_json({"ok": True, "out": out})
+                if rest == "/save":
+                    return self.send_json(local_api.save_m4b_to_downloads(pid))
                 if rest == "/reveal":
-                    proj = local_api.project_path(pid)
-                    if not proj:
-                        raise FileNotFoundError(pid)
-                    m4b = next((proj / "audiobook").glob("*.m4b"), None) if (proj / "audiobook").is_dir() else None
-                    alvo = m4b or (proj / "audiobook")
+                    alvo = local_api.reveal_target(pid)
                     if sys.platform == "darwin":
                         subprocess.Popen(["open", "-R", str(alvo)])
-                    return self.send_json({"ok": True, "path": str(alvo)})
+                    # Sem caminho completo na resposta (R38); a UI só confirma a ação.
+                    return self.send_json({"ok": True})
                 if rest == "/voice":
                     o = json.loads(self.body() or b"{}")
                     local_api.attach_voice_to_project(pid, o["voice_id"])
