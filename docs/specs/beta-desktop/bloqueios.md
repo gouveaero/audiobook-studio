@@ -64,6 +64,11 @@ Cada item traz o que travou, a opção escolhida para seguir e o que o dono prec
 - **Opção escolhida para seguir:** o botão copia o M4B para a pasta Downloads da pessoa e a tela só confirma depois de o arquivo existir. Se já houver um arquivo com o mesmo nome, o novo recebe " 2", " 3" no fim. "Mostrar no Finder" mostra o arquivo salvo. O autoteste agora clica no botão e confere o arquivo no disco.
 - **Decidido em 10/11/2026:** o dono deixou a escolha com o Maestro. Fica como está: salvar sempre em Downloads, que é o caminho mais simples para quem não é técnico. Uma janela para escolher a pasta pode entrar numa versão futura.
 
+### B15. Fim de frase cortado na narração do Pocket (T6, R11)
+- **Situação:** o dono ouviu o capítulo de referência e notou que, em alguns momentos, a fala para antes de a frase terminar. Medição do Motor: 1 em cada 4 dos 425 pedaços termina com a voz no nível de pico, sem silêncio no fim, e nesses o Whisper ouve "torno" por "tornozelo" e "desamp" por "desamparo". Causa apontada: o sinal de fim de fala do Pocket dispara cedo com o limiar padrão.
+- **Opção escolhida para seguir:** corrigir o limiar com um teste que falha nos pedaços cortados e medir R11 de novo. A conta do agente do Motor atingiu o limite de uso no meio da tarefa; ela passou para o agente do Livro, que estava livre.
+- **Para o dono decidir:** nada por enquanto. Ouvir o capítulo novo quando a correção entrar.
+
 ## Bloqueio que impede o resultado "completo"
 
 ### B12. R11 não passou depois de ajustar o corte (T6 sem marcar)
