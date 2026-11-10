@@ -20,6 +20,7 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 | R45 a R48 | T23 | `tests/test_licencas_sobre.py` via `VERIFY_LAYERS=base scripts/verify_beta.sh` | 8 passaram (180 na camada): LICENSE MIT sem e-mail, THIRD_PARTY com a apuração do OmniVoice (model card Apache 2.0, pacote 0.5.6 declara AGPL-3.0-only), tela Sobre com os termos, README com a liberação de abertura, botões de doação e Android só com endereço configurado. A origem exata do `ffmpeg` embutido fica para a T20 |
 | R33 no navegador | T19, guia 7 | `tests/ui/guias/07-seguranca.md`, executado pelo Testador no portal; captura conferida pelo Maestro | aprovado |
 | R44 | T22 | `tests/test_atualizacao.py` via `VERIFY_LAYERS=base scripts/verify_beta.sh` | 8 passaram (188 na camada): versão maior avisa, igual não avisa, sem rede e resposta inválida não causam erro; nenhum teste acessa a rede. Não verificado: consulta real às releases |
+| Guias de navegação, 1ª rodada | T19 | `tests/ui/guias/01` a `09`, executados pelo Testador no portal, capturas em `tests/ui/capturas/` | Aprovados: 2 (R1, R9), 3 (R5 a R8, R38), 4 (R22 a R25, com voz de reserva e motor falso), 7 (R33), 9 (R35). Reprovados: 1 (falta a tela de download do modelo, R36), 5 (painel mostra nuvem e GPU na geração local; cancelar deixa a tela sem saída), 6 (trecho refeito continua marcado; salvar mostra caminho completo), 8 (inglês e nomes técnicos no painel). Reprovações enviadas à Interface |
 
 ## Decisões de quem constrói
 
