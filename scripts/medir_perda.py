@@ -48,9 +48,19 @@ def comparar(ref, ouvido):
         "perdidas": n_perdidas, "trechos_perdidos": len(perdidos),
         "perdidas_pct": round(100.0 * n_perdidas / total, 3) if total else 0.0,
         "extras": sum(d - c for c, d in extras), "trechos_extras": len(extras),
+        "posicoes_perdidas": [[a, b] for a, b in perdidos],
         "exemplos_perdidos": [" ".join(ref[a:b])[:110] for a, b in sorted(perdidos, key=lambda t: t[0] - t[1])[:8]],
         "exemplos_extras": [" ".join(ouvido[c:d])[:110] for c, d in sorted(extras, key=lambda t: t[0] - t[1])[:5]],
     }
+
+
+def pedaco_de_cada_palavra(pedacos):
+    """`pedacos` em ordem: (capítulo, trecho, pedaço, texto). Devolve (trecho, pedaço) de cada palavra normalizada
+    do texto juntado, na mesma ordem das palavras de referência usadas em `comparar`."""
+    saida = []
+    for _, k, s, texto in pedacos:
+        saida += [(k, s)] * len(normalizar(texto))
+    return saida
 
 
 def transcrever(audio):

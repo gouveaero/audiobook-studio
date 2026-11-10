@@ -53,3 +53,17 @@ def test_referencia_omnivoice_medida_com_whisper(tmp_path):
     print("\nReferência OmniVoice:", json.dumps(r, ensure_ascii=False))
     assert r["total"] > 6000
     assert 0 <= r["perdidas"] < r["total"] * 0.05, r
+
+
+def test_compara_devolve_a_posicao_dos_trechos_perdidos():
+    """Para calibrar o ritmo: as posições (no texto de referência) permitem achar o pedaço que perdeu palavras."""
+    from medir_perda import comparar
+    ref = "um dois três quatro cinco seis sete oito nove dez onze doze".split()
+    ouvido = "um dois três sete oito nove dez aa bb cc dd doze".split()
+    assert comparar(ref, ouvido)["posicoes_perdidas"] == [[3, 6]]
+
+
+def test_pedaco_de_cada_palavra():
+    from medir_perda import pedaco_de_cada_palavra
+    pedacos = [("01", 0, 0, "Era um dia,"), ("01", 0, 1, "frio e luminoso."), ("01", 1, 0, "Fim.")]
+    assert pedaco_de_cada_palavra(pedacos) == [(0, 0)] * 3 + [(0, 1)] * 3 + [(1, 0)]
