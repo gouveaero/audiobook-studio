@@ -12,6 +12,11 @@ from . import Engine
 
 MAX_TOKENS = 50     # limite do Pocket por pedaço; acima disso ele avisa "generation may skip words"
 TARGET_TOKENS = 40  # alvo do pré-corte, com folga para o que o Pocket acrescenta ao preparar o texto
+# Fim de fala (EOS): o padrão do modelo (-4,0) dispara cedo e corta a última palavra (~1/4 dos
+# pedaços no capítulo de referência). Na amostra de 40 pedaços, o menor limiar sem corte foi 3,0,
+# com 10 quadros depois do EOS (~800 ms) para a cauda de silêncio (R11).
+EOS_THRESHOLD = 3.0
+FRAMES_AFTER_EOS = 10
 
 _FECHA = "\"'\u201d\u2019)\\]\u00bb"
 _FIM_DE_FRASE = re.compile(r"[.!?\u2026]+[" + _FECHA + r"]*(?=\s)")
@@ -117,6 +122,7 @@ class PocketEngine(Engine):
             self.model = TTSModel.load_model(language=name)
             # frases curtas ("Guerra é paz") saem truncadas sem o preenchimento com espaços do próprio Pocket (T6)
             self.model.pad_with_spaces_for_short_inputs = True
+            self.model.eos_threshold = EOS_THRESHOLD
             self.model_name = name
             self.sample_rate = self.model.sample_rate
         if voice.get("file"):
@@ -145,5 +151,7 @@ class PocketEngine(Engine):
     def synth(self, text: str, attempt: int):
         import torch
         torch.manual_seed(1000 + attempt)
-        w = self.model.generate_audio(self.state, text, max_tokens=MAX_TOKENS)
+        w = self.model.generate_audio(
+            self.state, text, max_tokens=MAX_TOKENS, frames_after_eos=FRAMES_AFTER_EOS,
+        )
         return w.detach().float().cpu().numpy().reshape(-1)
