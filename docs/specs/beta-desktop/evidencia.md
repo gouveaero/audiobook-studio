@@ -24,6 +24,12 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 | R9, R35, R39 | T16 | `tests/test_telas.py`, `tests/test_hidden_css.py` via `VERIFY_LAYERS=base scripts/verify_beta.sh`; guias 2, 3, 8 e 9 no navegador | 208 passaram na camada; guias aprovados (o 8 na 3ª rodada). Sem travessão, sem endereço externo, fontes embutidas, início abre sem rede |
 | R14, R15, R18, R30 a R32 | T18 | `tests/test_painel.py` via `VERIFY_LAYERS=base scripts/verify_beta.sh`; guias 5 e 6 no navegador | testes passaram; guias aprovados na 2ª rodada: pausar, continuar, cancelar, fechar e reabrir, tempo restante, tocar e avançar com `Range`, refazer só o trecho, salvar e mostrar no Finder. Tudo com motor falso; com o Pocket real fica para a T19 de ponta a ponta |
 | Guias de navegação, rodadas 2 e 3 | T19 | `tests/ui/guias/01` a `09` | os 9 aprovados. Reprovações da 1ª rodada (guias 1, 5, 6, 8) e da 2ª (guia 8, botões de R48 visíveis) corrigidas pela Interface e conferidas de novo. Falta para a T19: o percurso de ponta a ponta com o Pocket real |
+| R11, referência | T3 | `tests/test_medicao.py` (`@pytest.mark.model`), rodado pelo Maestro com cache de medição vazio, Whisper `small` refeito do zero | passou. OmniVoice no capítulo de referência: 36 palavras perdidas em trechos de 3+ (6 trechos) de 6.324 = 0,569%; 6.292 ouvidas; extras 12. Igual ao número de `requirements.md`. O Motor tinha medido 45 (0,712%) no mesmo áudio: o Whisper varia cerca de 9 palavras entre rodadas |
+| R10 | T5 | `tests/test_pocket_split.py` (6 sem modelo e 1 `@pytest.mark.model`), rodados pelo Maestro | passaram. Capítulo de referência: 84 trechos, 425 pedaços, máximo de 40 tokens por pedaço, zero avisos de corte |
+| R10, R11, R12 com o Pocket | T6 (sem marcar) | `tests/test_referencia.py` (`@pytest.mark.model`), rodado pelo Maestro: capítulo de referência gerado com o Pocket e medido com o Whisper | **FALHOU em R11.** OmniVoice perdeu 36 de 6.324 (0,569%); Pocket perdeu 103 de 6.324 (1,629%); teto 1,069%. Ver B12 |
+| R9, R26, R31, R36, R38 | T15 | `tests/test_rotas_api.py` via camada base, mais `test_models_download_real_e_motor_offline` (`@pytest.mark.model`) rodado pelo Maestro; guias 1, 2, 3 e 6 | passaram. Download real de cerca de 697 MB só para a pasta `hf/` do app, com progresso; depois o motor carrega e fala com `HF_HUB_OFFLINE=1` e sem token |
+| R22 a R26 | T17 | `tests/test_voz_tela.py` via camada base, mais `test_r23_ouvir_voz_pronta_com_pocket_real` (`@pytest.mark.model`) rodado pelo Maestro; guia 4 | passaram. Não verificado: gravação pelo microfone na janela (H6) e clonagem real com login |
+| Camada de modelo inteira | T2, T3, T5, T6, T15, T17 | `pytest -m model`, rodado pelo Maestro sozinho na máquina | 6 passaram e 1 falhou (R11, T6) em 28 min 53 s |
 
 ## Decisões de quem constrói
 
@@ -208,4 +214,12 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 - Commit: 8e5c935 (com alterações não commitadas)
 - Camadas pedidas: base
 - Camada `base`: passou. 216 passed, 10 deselected in 81.79s (0:01:21)
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 16:42
+- Commit: 3bbb37f (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 222 passed, 11 deselected in 80.14s (0:01:20)
 - Resultado: passou

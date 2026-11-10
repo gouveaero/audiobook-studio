@@ -8,12 +8,12 @@ Marcação de testes: sem marca, rodam sem modelo e em segundos (motor falso, EP
 
 - [x] **T1.** Configurar neste repositório, antes do primeiro commit, o autor indicado em `local.md`. Criar `.venv`, `requirements-app.txt`, `requirements-dev.txt`, `pytest.ini` e `scripts/verify_beta.sh`, que roda as três camadas de teste, grava o resultado em `EVIDENCE_PATH` e sai com erro se algo falhar. O script exige as variáveis `LOCAL_MD`, `VOICE_PACK_DIR` e `EVIDENCE_PATH`, e falha se faltar alguma. Criar já o teste de R49.
 - [x] **T2.** Provar a voz padrão: gerar áudio com a voz exportada de `portuguese_24l`, usando um `HF_HOME` vazio e sem token, e confirmar que clonar uma voz nova continua bloqueado. Até agora isso só foi testado com o modelo de 6 camadas. (R22) **Se falhar:** registrar em `bloqueios.md`, usar a voz pronta como padrão e seguir.
-- [ ] **T3.** Medir a referência de R11: Whisper `small` no capítulo de referência em OmniVoice, com o método de `local.md`. Guardar o número em `evidencia.md`.
+- [x] **T3.** Medir a referência de R11: Whisper `small` no capítulo de referência em OmniVoice, com o método de `local.md`. Guardar o número em `evidencia.md`.
 
 ## Motores e geração
 
 - [x] **T4.** `studio/engines/` com a interface, `omnivoice.py` e motor falso. `generate.py` passa a usá-la, sem mudar o comportamento atual. (R50)
-- [ ] **T5.** `pocket.py` com o pré-corte por tokens. (R10)
+- [x] **T5.** `pocket.py` com o pré-corte por tokens. (R10)
 - [ ] **T6.** Calibrar `rate_range` em dados reais e rodar o capítulo de referência. (R10, R11, R12) **Se R11 não passar depois de ajustar o corte:** não relaxe o critério. Deixe T6 sem marcar, registre os números em `bloqueios.md`, siga até a T24 e encerre com o resultado "incompleto".
 - [x] **T7.** Trechos atômicos, travas com PID, descarte de `.wav` ilegível e retomada. (R13)
 - [x] **T8.** `work/job.json`, pausar, continuar, cancelar, `caffeinate`, espaço em disco e tempo restante. (R14 a R18)
@@ -32,9 +32,9 @@ Marcação de testes: sem marca, rodam sem modelo e em segundos (motor falso, EP
 ## Servidor e telas
 
 - [x] **T14.** Pastas do app, `brand.py`, abrir sem `--project`, token de sessão, `Host` e `Range`. (R33, R34, R30)
-- [ ] **T15.** Rotas de projetos, voz, modelos, estado e refazer trecho. (R9, R26, R31, R36, R38)
+- [x] **T15.** Rotas de projetos, voz, modelos, estado e refazer trecho. (R9, R26, R31, R36, R38)
 - [x] **T16.** Telas de início e conferência, fontes embutidas. (R9, R35, R39)
-- [ ] **T17.** Tela de voz, com padrão, vozes prontas e clonagem guiada, e checagem da gravação. (R22 a R26)
+- [x] **T17.** Tela de voz, com padrão, vozes prontas e clonagem guiada, e checagem da gravação. (R22 a R26)
 - [x] **T18.** Painel com controles reais e tela final com player. (R14, R18, R30 a R32)
 - [ ] **T19.** Teste de ponta a ponta na janela do navegador com o Chrome DevTools: EPUB curto até o M4B, sem usar a linha de comando. Conferir também as telas com capturas e corrigir o que estiver quebrado.
 
