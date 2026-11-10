@@ -116,6 +116,16 @@ def log_exception():
         pass
 
 
+def erro_publico(msg: str = "Algo deu errado. Veja o log.") -> str:
+    """Mensagem para a tela: português, sem traceback, caminho ou nome de exceção (R38)."""
+    texto = (msg or "").strip() or "Algo deu errado. Veja o log."
+    if "Traceback" in texto or re.search(r"/Users/|/home/|\\\\", texto):
+        return "Algo deu errado. Veja o log."
+    if re.search(r"\b(Error|Exception|KeyError|TypeError|ValueError|RuntimeError|OSError)\b", texto):
+        return "Algo deu errado. Veja o log."
+    return texto
+
+
 def resolve_project_audio(url_path: str):
     """Resolve /voice|chapters|audiobook/... para um arquivo sob P. None = não é áudio do projeto; False = tentativa inválida."""
     if not P:
@@ -265,7 +275,7 @@ class H(SimpleHTTPRequestHandler):
             return self.send_json({"error": "Projeto não encontrado."}, 404)
         except Exception:
             log_exception()
-            return self.send_json({"error": "Algo deu errado. Veja o log."}, 500)
+            return self.send_json({"error": erro_publico()}, 500)
         if p == "/":
             self.path = "/setup.html"
         super().do_GET()
@@ -284,7 +294,7 @@ class H(SimpleHTTPRequestHandler):
                 try:
                     return self.send_json(local_api.create_project_from_epub(self.body()))
                 except BookError as e:
-                    return self.send_json({"error": str(e), "code": e.code}, 400)
+                    return self.send_json({"error": erro_publico(str(e)), "code": e.code}, 400)
             if p == "/api/hf-login":
                 data = json.loads(self.body() or b"{}")
                 local_api.save_hf_token(data.get("token", ""))
@@ -299,9 +309,9 @@ class H(SimpleHTTPRequestHandler):
                     return self.send_json(local_api.save_cloned_voice(
                         self.body(), label=label, text=text, consent=consent))
                 except PermissionError as e:
-                    return self.send_json({"error": str(e)}, 400)
+                    return self.send_json({"error": erro_publico(str(e))}, 400)
                 except ValueError as e:
-                    return self.send_json({"error": str(e)}, 400)
+                    return self.send_json({"error": erro_publico(str(e))}, 400)
             m = PROJ_RE.match(p)
             if m:
                 pid, rest = m.group(1), m.group(2) or ""
@@ -374,14 +384,14 @@ class H(SimpleHTTPRequestHandler):
                     return self.send_json({"error": "Abra um projeto antes."}, 400)
                 spawn("assemble", [sys.executable, "-m", "studio.assemble", "--project", P], os.path.dirname(HERE)); return self.send_json({"ok": True})
         except BookError as e:
-            return self.send_json({"error": str(e), "code": e.code}, 400)
+            return self.send_json({"error": erro_publico(str(e)), "code": e.code}, 400)
         except FileNotFoundError:
             return self.send_json({"error": "Projeto não encontrado."}, 404)
         except ValueError as e:
-            return self.send_json({"error": str(e)}, 400)
+            return self.send_json({"error": erro_publico(str(e))}, 400)
         except Exception:
             log_exception()
-            return self.send_json({"error": "Algo deu errado. Veja o log."}, 500)
+            return self.send_json({"error": erro_publico()}, 500)
         self.send_json({"error": "rota desconhecida"}, 404)
 
     def do_PUT(self):
@@ -396,10 +406,10 @@ class H(SimpleHTTPRequestHandler):
         except FileNotFoundError:
             return self.send_json({"error": "Projeto não encontrado."}, 404)
         except ValueError as e:
-            return self.send_json({"error": str(e)}, 400)
+            return self.send_json({"error": erro_publico(str(e))}, 400)
         except Exception:
             log_exception()
-            return self.send_json({"error": "Algo deu errado. Veja o log."}, 500)
+            return self.send_json({"error": erro_publico()}, 500)
         self.send_json({"error": "rota desconhecida"}, 404)
 
     def do_DELETE(self):

@@ -28,8 +28,16 @@ VOZES_PRONTAS = [
 ]
 
 MODEL_ID = "portuguese_24l"
-# Tamanho aproximado mostrado na UI (R36); o download real preenche o progresso.
-MODEL_TOTAL_BYTES = 850_000_000
+# Pesos sem clonagem (os mesmos que pocket.py / TTSModel.load_model usa sem login).
+# Ver pocket_tts/config/portuguese_24l.yaml → weights_path_without_voice_cloning + tokenizer.
+MODEL_REPO = "kyutai/pocket-tts-without-voice-cloning"
+MODEL_REVISION = "4e1e0a3e611c51c0b4ed8174fc10f32a54644303"
+MODEL_FILES = (
+    f"languages/{MODEL_ID}/model.safetensors",
+    f"languages/{MODEL_ID}/tokenizer.json",
+)
+# Tamanho medido no download da T2 (~672 MB); o download real atualiza com o Content-Length.
+MODEL_TOTAL_BYTES = 672 * 1024 * 1024
 APP_VERSION = "0.1.0-beta"
 
 
@@ -294,8 +302,11 @@ def redo_chunk(pid: str, chapter: str, chunk: int) -> dict:
     stem = f"{chapter}_{int(chunk):04d}"
     for f in list(chunks.glob(stem + "*")):
         f.unlink(missing_ok=True)
-    cap = p / "chapters" / f"{chapter}.m4a"
-    cap.unlink(missing_ok=True)
+    (p / "chapters" / f"{chapter}.m4a").unlink(missing_ok=True)
+    # generate.py só reclama o capítulo se a trava não existir
+    locks = p / "work" / "locks"
+    locks.mkdir(parents=True, exist_ok=True)
+    (locks / chapter).unlink(missing_ok=True)
     return start_generate(pid, only=chapter, extra={
         "status": "refazendo",
         "redo": {"chapter": chapter, "chunk": int(chunk)},
@@ -309,11 +320,15 @@ def save_hf_token(token: str) -> None:
         raise ValueError("Informe o token do Hugging Face.")
     path = app_home() / "hf" / "token"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(token + "\n", encoding="utf8")
+    # Cria já com 0600 (R26); se existir, corrige a permissão antes de escrever.
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        os.write(fd, (token + "\n").encode("utf8"))
+    finally:
+        os.close(fd)
     os.chmod(path, 0o600)
-    # HF_HOME do app: huggingface_hub lê token de lá se configurado
-    hf_home = app_home() / "hf"
-    os.environ.setdefault("HF_HOME", str(hf_home))
+    os.environ["HF_HOME"] = str(app_home() / "hf")
 
 
 def models_status_path() -> Path:
@@ -349,49 +364,100 @@ def set_models_status(**kw) -> dict:
     return cur
 
 
-def baixar_modelo(dest: Path, on_progress) -> None:
-    """Baixa os pesos do modelo. Em teste (PYTEST_CURRENT_TEST) exige monkeypatch."""
-    if os.environ.get("PYTEST_CURRENT_TEST"):
-        raise RuntimeError("baixar_modelo bloqueado em teste; injete um falso")
-    # Implementação real: huggingface_hub (só fora de teste; precisa de rede).
+def _hf_home_do_app() -> Path:
+    """HF_HOME do app: mesmo lugar em que o Pocket procura o cache (R35, R36)."""
+    ensure_dirs()
+    hf = app_home() / "hf"
+    hf.mkdir(parents=True, exist_ok=True)
+    os.environ["HF_HOME"] = str(hf)
+    return hf
+
+
+def tamanho_modelo_remoto() -> int:
+    """Soma o tamanho real dos arquivos que o Pocket baixa sem login."""
+    from huggingface_hub import hf_hub_url, get_hf_file_metadata
+    total = 0
+    for fn in MODEL_FILES:
+        url = hf_hub_url(MODEL_REPO, fn, revision=MODEL_REVISION)
+        meta = get_hf_file_metadata(url)
+        total += int(meta.size or 0)
+    return total or MODEL_TOTAL_BYTES
+
+
+def baixar_modelo(on_progress) -> None:
+    """Baixa os pesos sem clonagem para HF_HOME do app, com progresso em bytes.
+
+    É exatamente o que TTSModel.load_model(language=portuguese_24l) baixa sem login
+    (pocket_tts/config/portuguese_24l.yaml). Depois disso o motor carrega offline.
+    """
     from huggingface_hub import hf_hub_download
+    from tqdm.auto import tqdm as base_tqdm
 
-    def _cb(done, total):
-        on_progress(done, total or MODEL_TOTAL_BYTES)
+    _hf_home_do_app()
+    try:
+        total = tamanho_modelo_remoto()
+    except Exception:
+        total = MODEL_TOTAL_BYTES
+    on_progress(0, total)
+    acc = [0]
 
-    _cb(0, MODEL_TOTAL_BYTES)
-    path = hf_hub_download(
-        repo_id="kyutai/pocket-tts",
-        filename=f"languages/{MODEL_ID}/model.safetensors",
-        local_dir=str(dest.parent),
-    )
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    if Path(path) != dest:
-        shutil.copy2(path, dest)
-    _cb(MODEL_TOTAL_BYTES, MODEL_TOTAL_BYTES)
+    class ProgTqdm(base_tqdm):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self._seen = 0
+
+        def update(self, n=1):
+            r = super().update(n)
+            delta = self.n - self._seen
+            self._seen = self.n
+            if delta:
+                acc[0] += delta
+                on_progress(min(acc[0], total), total)
+            return r
+
+    for fn in MODEL_FILES:
+        hf_hub_download(
+            repo_id=MODEL_REPO,
+            filename=fn,
+            revision=MODEL_REVISION,
+            tqdm_class=ProgTqdm,
+        )
+    on_progress(total, total)
 
 
 _download_lock = threading.Lock()
 
 
-def start_model_download(baixar=baixar_modelo) -> dict:
+def start_model_download(baixar=None) -> dict:
+    baixar = baixar or baixar_modelo
     cur = get_models_status()
     if cur.get("status") == "baixando":
         return cur
-    set_models_status(status="baixando", bytes=0, error=None)
-    dest = app_home() / "models" / MODEL_ID / "model.safetensors"
+    set_models_status(status="baixando", bytes=0, total_bytes=MODEL_TOTAL_BYTES, error=None)
 
     def run():
         with _download_lock:
             try:
                 def on_progress(done, total):
-                    set_models_status(status="baixando", bytes=int(done), total_bytes=int(total or MODEL_TOTAL_BYTES))
+                    set_models_status(
+                        status="baixando",
+                        bytes=int(done),
+                        total_bytes=int(total or MODEL_TOTAL_BYTES),
+                        error=None,
+                    )
 
-                baixar(dest, on_progress)
-                set_models_status(status="pronto", bytes=get_models_status().get("total_bytes", MODEL_TOTAL_BYTES), error=None)
-            except Exception as e:
-                # mensagem simples; sem traceback na API
-                set_models_status(status="erro", error="A descarga falhou. Verifique a conexão e tente de novo.")
+                baixar(on_progress)
+                st = get_models_status()
+                set_models_status(
+                    status="pronto",
+                    bytes=int(st.get("total_bytes") or MODEL_TOTAL_BYTES),
+                    error=None,
+                )
+            except Exception:
+                set_models_status(
+                    status="erro",
+                    error="O download falhou. Verifique a conexão e tente de novo.",
+                )
 
     threading.Thread(target=run, daemon=True).start()
     return get_models_status()
