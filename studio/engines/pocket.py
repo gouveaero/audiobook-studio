@@ -17,10 +17,41 @@ TARGET_TOKENS = 40  # alvo do pré-corte, com folga para o que o Pocket acrescen
 # com 10 quadros depois do EOS (~800 ms) para a cauda de silêncio (R11).
 EOS_THRESHOLD = 3.0
 FRAMES_AFTER_EOS = 10
+# Silêncio deixado no fim depois de aparar a folga do EOS (acima dos 120 ms do teste; evita pausa
+# longa no meio da frase quando generate.py soma PIECE_PAUSE, R12).
+CAUDA_MS = 200
 
 _FECHA = "\"'\u201d\u2019)\\]\u00bb"
 _FIM_DE_FRASE = re.compile(r"[.!?\u2026]+[" + _FECHA + r"]*(?=\s)")
 _PAUSA = re.compile(r"[,;:][" + _FECHA + r"]*(?=\s)")
+
+
+def apara_silencio_final(w, sr: int, cauda_ms: int | None = None):
+    """Corta o silêncio no fim do pedaço, deixando `cauda_ms` (padrão CAUDA_MS).
+
+    Mesmo critério do teste: quadros de 20 ms; voz = RMS acima do pico menos 30 dB.
+    Se a cauda já for curta ou o sinal terminar em voz, devolve o áudio intacto.
+    """
+    import numpy as np
+
+    if cauda_ms is None:
+        cauda_ms = CAUDA_MS
+    w = np.asarray(w, dtype=np.float64).reshape(-1)
+    fr = int(sr * 0.02)
+    if fr < 1 or len(w) < fr:
+        return w
+    nq = len(w) // fr
+    rms_db = lambda x: 20 * np.log10(np.sqrt(np.mean(x ** 2)) + 1e-9)
+    env = np.array([rms_db(w[i * fr:(i + 1) * fr]) for i in range(nq)])
+    pico = float(env.max())
+    com_voz = np.where(env > pico - 30)[0]
+    if len(com_voz) == 0:
+        return w
+    fim_voz = (int(com_voz[-1]) + 1) * fr
+    alvo = fim_voz + int(sr * cauda_ms / 1000)
+    if alvo >= len(w):
+        return w
+    return w[:alvo]
 
 
 def _partir(texto, padrao):
@@ -154,4 +185,4 @@ class PocketEngine(Engine):
         w = self.model.generate_audio(
             self.state, text, max_tokens=MAX_TOKENS, frames_after_eos=FRAMES_AFTER_EOS,
         )
-        return w.detach().float().cpu().numpy().reshape(-1)
+        return apara_silencio_final(w.detach().float().cpu().numpy().reshape(-1), self.sample_rate)
