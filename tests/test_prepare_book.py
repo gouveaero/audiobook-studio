@@ -291,6 +291,49 @@ def test_r8_lang_explicito_na_linha_de_comando_continua_valendo(tmp_path):
     assert json.load(open(out / "book.json"))["language"] == "en"
 
 
+# T11: defeitos achados nos livros reais, reproduzidos com texto inventado ----------------------------------------------
+
+def test_t11_separador_sem_letras_nao_e_lido(tmp_path):
+    body = ("<h1>A casa</h1>" + paras(2) + '<p class="sep">*</p><p>* * *</p><p>⁂</p><p>***</p>'
+            "<p>Ela contou até 3.</p>" + paras(2))
+    ch = build(tmp_path, [("c1.xhtml", body)], toc=[("A casa", "c1.xhtml")])["chapters"][0]
+    assert not any(not any(x.isalnum() for x in k) for k in ch["chunks"]), ch["chunks"]
+    assert "*" not in text(ch) and "⁂" not in text(ch)
+    assert "Ela contou até três." in ch["chunks"]
+
+
+def test_t11_romanos_com_capitulos_arabicos_sao_partes(tmp_path):
+    spine = [("p1.xhtml", "<h1>I. ORIGEM</h1><p>Uma epígrafe curta, inventada para o teste.</p>"),
+             ("c1.xhtml", "<h2>1. A casa</h2>" + paras(3)), ("c2.xhtml", "<h2>2. O rio (812-604 a.C.)</h2>" + paras(3)),
+             ("p2.xhtml", "<h1>II. VIAGEM</h1>"), ("c3.xhtml", "<h2>3. O mar (30 a.C.-20 d.C.)</h2>" + paras(3)),
+             ("ep.xhtml", "<h1>Epílogo</h1>" + paras(3))]
+    toc = [("I. ORIGEM", "p1.xhtml", [("1. A casa", "c1.xhtml"), ("2. O rio (812-604 a.C.)", "c2.xhtml")]),
+           ("II. VIAGEM", "p2.xhtml", [("3. O mar (30 a.C.-20 d.C.)", "c3.xhtml")]), ("Epílogo", "ep.xhtml")]
+    chs = build(tmp_path, spine, toc=toc)["chapters"]
+    assert [c["title"] for c in chs] == ["Parte I: Origem", "Parte I, capítulo 1: A casa",
+                                         "Parte I, capítulo 2: O rio (812-604 a.C.)", "Parte II: Viagem",
+                                         "Parte II, capítulo 3: O mar (30 a.C.-20 d.C.)", "Epílogo"]
+    assert chs[0]["chunks"][0] == "Parte um. Origem."
+    assert chs[3]["chunks"] == ["Parte dois. Viagem."]
+    assert chs[2]["chunks"][0] == "Capítulo dois. O rio, oitocentos e doze a seiscentos e quatro antes de Cristo."
+    assert chs[4]["chunks"][0] == "Capítulo três. O mar, trinta antes de Cristo a vinte depois de Cristo."
+
+
+def test_t11_capitulos_so_em_romano_continuam_capitulos(tmp_path):
+    spine = [("c1.xhtml", "<h2>I</h2>" + paras(3)), ("c2.xhtml", "<h2>II</h2>" + paras(3))]
+    chs = build(tmp_path, spine, toc=[("I", "c1.xhtml"), ("II", "c2.xhtml")])["chapters"]
+    assert [c["title"] for c in chs] == ["Capítulo 1", "Capítulo 2"]
+    assert chs[1]["chunks"][0] == "Capítulo dois."
+
+
+def test_t11_nota_do_autor_fica_e_notas_finais_saem(tmp_path):
+    spine = [("n1.xhtml", "<h1>Notas sobre os nomes</h1>" + paras(2)), ("c1.xhtml", "<h1>A casa</h1>" + paras(3)),
+             ("n2.xhtml", "<h1>Notas</h1><p>1. Fonte inventada, página dez.</p>"),
+             ("n3.xhtml", "<h1>Notas finais</h1><p>2. Outra fonte inventada.</p>")]
+    toc = [("Notas sobre os nomes", "n1.xhtml"), ("A casa", "c1.xhtml"), ("Notas", "n2.xhtml"), ("Notas finais", "n3.xhtml")]
+    assert [c["title"] for c in build(tmp_path, spine, toc=toc)["chapters"]] == ["Notas sobre os nomes", "A casa"]
+
+
 def test_linha_de_comando_atual(tmp_path):
     epub = make_epub(str(tmp_path / "l.epub"), [("c1.xhtml", "<h1>Um</h1>" + paras(4))], toc=[("Um", "c1.xhtml")])
     r, out = cli(tmp_path, epub)
