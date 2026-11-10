@@ -7,7 +7,9 @@ Colab; o CLI é chamado com `--auth adc`). Um plano com unidades de computação
 
 O que este módulo faz, com as lições aprendidas na prática:
   1. cria a sessão (503 = sem capacidade; tenta de novo até 6 vezes);
-  2. instala o `omnivoice` na VM e envia book.json, voice/ e o pacote studio/;
+  2. instala o motor do projeto na VM (`omnivoice` ou `pocket-tts`, pelo config.json) e envia book.json, config.json,
+     a voz que o motor usa (ref.wav e ref.txt no OmniVoice; manifest.json e o .safetensors no Pocket) e o pacote
+     studio/, inclusive studio/engines/;
   3. dispara `studio.generate` na VM em segundo plano (3 processos em GPU CUDA);
   4. acompanha e só baixa NN.m4a depois que o arquivo existe na VM (o gerador o renomeia só quando completo)
      e confere cada download com ffprobe. Arquivo parcial nunca é aceito;
@@ -67,9 +69,44 @@ def probe_ok(path):
                           capture_output=True).returncode == 0
 
 
+PIP = {"omnivoice": "omnivoice num2words", "pocket": "pocket-tts==4.0.1 num2words scipy"}
+
+
+def arquivos_do_projeto(P, motor):
+    """(local, remoto) do que a VM precisa para gerar com `motor`."""
+    from studio.generate import voice_for
+    envio = [(f"{P}/book.json", "/content/project/book.json")]
+    if os.path.exists(f"{P}/config.json"):
+        envio.append((f"{P}/config.json", "/content/project/config.json"))
+    if motor == "pocket":
+        envio.append((f"{P}/voice/manifest.json", "/content/project/voice/manifest.json"))
+        voz = voice_for(P, {})
+        if voz.get("file"):
+            envio.append((voz["file"], f"/content/project/voice/{os.path.basename(voz['file'])}"))
+    else:
+        for f in ("voice/ref.wav", "voice/ref.txt"):
+            envio.append((f"{P}/{f}", f"/content/project/{f}"))
+    return envio
+
+
+def arquivos_do_pacote(here):
+    """(local, remoto) de studio/*.py e studio/engines/*.py."""
+    envio = []
+    for sub in ("", "engines"):
+        d = os.path.join(here, sub)
+        for f in sorted(os.listdir(d)):
+            if f.endswith(".py"):
+                envio.append((os.path.join(d, f), "/content/studio/" + (f"{sub}/{f}" if sub else f)))
+    return envio
+
+
 def run(a):
+    from studio.generate import engine_name_for
     P = os.path.abspath(a.project)
-    book = json.load(open(f"{P}/book.json"))["chapters"]
+    motor = engine_name_for(P)
+    if motor not in PIP:
+        sys.exit(f"Motor {motor!r} não roda na nuvem. Use omnivoice ou pocket.")
+    book = [c for c in json.load(open(f"{P}/book.json"))["chapters"] if c.get("include", True)]
     want = a.only.split(",") if a.only else [c["id"] for c in book]
     leave = set(filter(None, a.leave.split(",")))  # capítulos reservados para este computador (studio.generate --only)
     todo = [i for i in want if i not in leave and not (os.path.exists(f"{P}/chapters/{i}.m4a") and probe_ok(f"{P}/chapters/{i}.m4a"))]
@@ -84,21 +121,19 @@ def run(a):
     else:
         sys.exit("Não consegui alocar a GPU. Tente de novo em alguns minutos.")
     try:
-        print("instalando o OmniVoice na VM...")
-        vm_background("pip install -q omnivoice num2words", "pip")
+        print(f"instalando o motor {motor} na VM...")
+        vm_background(f"pip install -q {PIP[motor]}", "pip")
         print("instalado")
         here = os.path.dirname(os.path.abspath(__file__))
-        vm_py("import os;os.makedirs('/content/project/voice',exist_ok=True);os.makedirs('/content/studio',exist_ok=True)", 60)
-        for f in ("book.json", "voice/ref.wav", "voice/ref.txt"):
-            colab("upload", "-s", SESSION, f"{P}/{f}", f"/content/project/{f}")
-        for f in os.listdir(here):
-            if f.endswith(".py"):
-                colab("upload", "-s", SESSION, f"{here}/{f}", f"/content/studio/{f}")
-        # trava os capítulos que não foram pedidos, para os processos só pegarem os da lista
-        lock = [c["id"] for c in book if c["id"] not in todo]
+        vm_py("import os;os.makedirs('/content/project/voice',exist_ok=True);os.makedirs('/content/studio/engines',exist_ok=True)", 60)
+        for local, remoto in arquivos_do_projeto(P, motor) + arquivos_do_pacote(here):
+            colab("upload", "-s", SESSION, local, remoto)
+        # trava os capítulos que não foram pedidos (e os tirados pela pessoa), para os processos só pegarem os da lista
+        todos = json.load(open(f"{P}/book.json"))["chapters"]
+        lock = [c["id"] for c in todos if c["id"] not in todo]
         vm_py("import os,subprocess\nos.makedirs('/content/project/work/locks',exist_ok=True)\n"
               f"for i in {lock!r}: open('/content/project/work/locks/'+i,'w').close()\n"
-              "subprocess.Popen('cd /content && nohup python -m studio.generate --project /content/project > /content/gen.log 2>&1 &',shell=True)\nprint('lançado')", 60)
+              f"subprocess.Popen('cd /content && nohup python -m studio.generate --project /content/project --motor {motor} --no-assemble > /content/gen.log 2>&1 &',shell=True)\nprint('lançado')", 60)
         os.makedirs(f"{P}/chapters", exist_ok=True)
         pending = set(todo)
         while pending:

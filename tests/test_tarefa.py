@@ -190,3 +190,11 @@ def test_erro_vira_estado_erro_em_portugues_e_o_detalhe_vai_para_o_log(tmp_path,
     j = job(P)
     assert j["status"] == "erro" and "Traceback" not in j["error"] and j["error"]
     assert not (P / "work" / "locks" / "01").exists(), "trava solta para tentar de novo"
+
+
+def test_no_assemble_gera_tudo_e_nao_monta(tmp_path, ambiente_fake):
+    P = make_project(tmp_path, [("01", "Um", ["Oi."])], config={"motor": FAKE_ENGINE})
+    (P / "cover.jpg").unlink()
+    gerar(P, "--no-assemble")
+    assert (P / "chapters" / "01.m4a").exists()
+    assert job(P)["status"] == "concluido" and not (P / "audiobook").exists()

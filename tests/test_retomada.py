@@ -135,5 +135,6 @@ def test_capitulo_com_include_false_nao_e_gerado(tmp_path, ambiente_fake):
     assert (P / "chapters" / "01.m4a").exists() and (P / "chapters" / "03.m4a").exists()
     assert not (P / "chapters" / "02.m4a").exists()
     assert not (P / "work" / "locks" / "02").exists()
-    feitos = [json.loads(l)["ch"] for l in (P / "work" / "progress.jsonl").read_text().splitlines()]
-    assert feitos == ["01", "03"]
+    ev = [json.loads(l) for l in (P / "work" / "progress.jsonl").read_text().splitlines()]
+    assert [e["ch"] for e in ev if e["kind"] == "done"] == ["01", "03"]
+    assert {e["ch"] for e in ev} == {"01", "03"}, "nenhum evento do capítulo excluído"

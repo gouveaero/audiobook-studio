@@ -182,6 +182,7 @@ def main(argv=None):
     ap.add_argument("--workers", type=int, default=0, help="processos em paralelo (padrão: 3 em CUDA, 1 no resto)")
     ap.add_argument("--steps", type=int, default=32)
     ap.add_argument("--motor", default="", help="motor (padrão: o de config.json, senão omnivoice)")
+    ap.add_argument("--no-assemble", action="store_true", help="não monta o M4B no fim (a nuvem só gera)")
     ap.add_argument("--worker-child", action="store_true", help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
     P = a.project
@@ -226,7 +227,7 @@ def main(argv=None):
             if code:
                 tarefa.update(status="erro", error="A geração falhou num dos processos. Veja work/generate.log.")
                 sys.exit(code)
-            finalizar(P, tarefa, incluidos)
+            finalizar(P, tarefa, incluidos, a.no_assemble)
             return
 
     caf = subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())]) if chefe and shutil.which("caffeinate") else None
@@ -248,12 +249,12 @@ def main(argv=None):
         if caf is not None:
             caf.terminate()
     if chefe:
-        finalizar(P, tarefa, incluidos)
+        finalizar(P, tarefa, incluidos, a.no_assemble)
 
 
-def finalizar(P, tarefa, incluidos):
+def finalizar(P, tarefa, incluidos, sem_montar=False):
     """Com todos os capítulos incluídos prontos, monta o M4B; senão, a tarefa só termina."""
-    if not all(os.path.exists(f"{P}/chapters/{c['id']}.m4a") for c in incluidos):
+    if sem_montar or not all(os.path.exists(f"{P}/chapters/{c['id']}.m4a") for c in incluidos):
         tarefa.update(status="concluido", eta_seconds=0)
         return
     from studio.assemble import montar_projeto
