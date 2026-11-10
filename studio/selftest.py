@@ -289,6 +289,8 @@ def run_self_test(argv=None) -> int:
   }} catch (e) {{ out.getUserMedia = "erro"; }}
   try {{
     const a = document.createElement("audio");
+    a.muted = true;
+    a.volume = 0;
     a.preload = "auto";
     a.src = {json.dumps(audio_url)};
     document.body.appendChild(a);
@@ -302,6 +304,7 @@ def run_self_test(argv=None) -> int:
     await new Promise(r => setTimeout(r, 400));
     out.seek_ok = a.currentTime > 0.02;
     out.audio_range = out.seek_ok;
+    out.mudo = a.muted === true && a.volume === 0;
   }} catch (e) {{ out.audio_range = false; out.audio_err = String(e); }}
   if (out.getUserMedia === "presente") {{
     out.microphone_permission = "esperando";
@@ -432,18 +435,32 @@ def run_self_test(argv=None) -> int:
   const lista = document.querySelectorAll(".voz");
   const on = document.querySelector(".voz.on");
   let ouviu = false;
+  let mudo = false;
   const btn = on ? on.querySelector("button") : document.querySelector(".voz button");
   if (btn) {
+    // Silencia o player antes do Ouvir (o app chama play(); autoteste não deve soar).
+    const player = document.getElementById("player");
+    if (player) { player.muted = true; player.volume = 0; }
+    const proto = HTMLMediaElement.prototype;
+    const origPlay = proto.play;
+    proto.play = function() {
+      this.muted = true;
+      this.volume = 0;
+      return origPlay.apply(this, arguments);
+    };
     btn.click();
     await new Promise(r => setTimeout(r, 2500));
-    const player = document.getElementById("player");
-    ouviu = !!(player && (player.src || player.currentSrc));
+    const p = document.getElementById("player");
+    ouviu = !!(p && (p.src || p.currentSrc));
+    mudo = !!(p && p.muted === true && p.volume === 0);
+    proto.play = origPlay;
   }
   window.__absStep = {
     step: step,
     ok: !!on && lista.length >= 1,
     selecionada: !!on,
     ouviu: ouviu,
+    mudo: mudo,
     n: lista.length
   };
 """, timeout=30)
@@ -534,18 +551,25 @@ def run_self_test(argv=None) -> int:
                 seek = _run_js_step(window, "guia6_seek", """
   const a = document.querySelector("audio");
   if (!a) throw new Error("sem audio");
+  a.muted = true;
+  a.volume = 0;
   await new Promise((resolve, reject) => {
     a.onloadedmetadata = () => resolve();
     a.onerror = () => reject(new Error("audio"));
     setTimeout(() => resolve(), 8000);
     a.load();
   });
+  a.muted = true;
+  a.volume = 0;
   const before = a.currentTime || 0;
   const mid = Math.max(0.05, (a.duration || 1) / 2);
   a.currentTime = mid;
   await new Promise(r => setTimeout(r, 500));
   const seek_ok = a.currentTime > before && a.currentTime > 0.02;
-  window.__absStep = {step: step, ok: seek_ok, before: before, after: a.currentTime, duration: a.duration};
+  window.__absStep = {
+    step: step, ok: seek_ok, before: before, after: a.currentTime, duration: a.duration,
+    mudo: a.muted === true && a.volume === 0
+  };
 """, timeout=30)
                 if seek.get("ok"):
                     result["audio_range"] = True
