@@ -352,7 +352,10 @@ def test_ui_tem_ajudante_de_token():
 
 def test_paginas_ui_nao_fazem_escrita_fora_do_ajudante():
     """Toda fetch/XMLHttpRequest de escrita em ui/ passa pelo ajudante com token."""
-    helper_names = ("studioWrite", "studioFetch", "studio.post", "studio.put", "studio.del", "studio.delete")
+    helper_names = (
+        "studioWrite", "studioWriteRaw", "studioFetch",
+        "studio.post", "studio.postRaw", "studio.put", "studio.del", "studio.delete",
+    )
     # fetch(url, { method: "POST" ... }) direto é proibido; post() local que não usa o ajudante também
     direto = re.compile(
         r"""fetch\s*\([^)]*\{[^}]*method\s*:\s*['"](POST|PUT|DELETE)['"]""",

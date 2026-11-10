@@ -35,7 +35,8 @@ def auth(s, extra=None):
 
 
 def wait_final(api, pid, timeout=90):
-    finais = {"concluido", "erro", "cancelado"}
+    # Status reais de work/job.json (Motor T8): gerando/pausado/montando → pronto|concluido|erro|cancelado
+    finais = {"concluido", "pronto", "erro", "cancelado"}
     deadline = time.time() + timeout
     last = None
     while time.time() < deadline:
@@ -148,15 +149,15 @@ def test_put_include_e_titulo_respeitados_na_montagem(api, casa, ambiente_fake):
     assert any("renomeado" in t.lower() for t in titulos)
 
 
-@pytest.mark.xfail(strict=True, reason="aguarda Motor T8: generate.py ainda não lê include")
-def test_generate_respeita_include_aguarda_motor(api, casa, ambiente_fake):
-    """Quando o Motor passar a ler include, o capítulo tirado não deve ser gerado."""
+def test_generate_respeita_include(api, casa, ambiente_fake):
+    """R9: capítulo com include false não gera áudio (generate lê include)."""
     proj = _projeto_r9(casa)
     pid = proj.name
     st, _, b = api.req("POST", f"/api/projects/{pid}/start", headers=auth(api))
     assert st == 200, b
     state = wait_final(api, pid, timeout=120)
-    assert state["status"] == "concluido", state
+    # generate termina em concluido (parcial) ou pronto (montou M4B)
+    assert state["status"] in ("concluido", "pronto"), state
     assert not (proj / "chapters" / "01.m4a").exists()
 
 

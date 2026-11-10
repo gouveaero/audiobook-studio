@@ -37,12 +37,27 @@
     return j;
   }
 
+  // Resposta crua (áudio binário ou JSON de erro). Cabeçalhos extras e corpo Blob/ArrayBuffer ok.
+  async function studioWriteRaw(path, body, method, headers) {
+    method = method || "POST";
+    headers = headers || {};
+    const r = await studioFetch(path, { method: method, body: body, headers: headers });
+    if (!r.ok) {
+      let msg = "erro";
+      try { const j = await r.json(); msg = j.error || msg; } catch (e) {}
+      throw new Error(msg);
+    }
+    return r;
+  }
+
   global.studio = {
     token: token,
     href: href,
     fetch: studioFetch,
     write: studioWrite,
+    writeRaw: studioWriteRaw,
     post: function (path, body, headers) { return studioWrite(path, body, "POST", headers || {}); },
+    postRaw: function (path, body, headers) { return studioWriteRaw(path, body, "POST", headers || {}); },
     put: function (path, body, headers) { return studioWrite(path, body, "PUT", headers || {}); },
     del: function (path, body, headers) { return studioWrite(path, body, "DELETE", headers || {}); }
   };

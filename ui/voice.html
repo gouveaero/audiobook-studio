@@ -187,19 +187,14 @@ async function ouvir(id, btn) {
   btn.disabled = true;
   btn.textContent = "Gerando...";
   try {
-    const r = await studio.fetch("/api/voices/preview", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Studio-Token": studio.token() },
-      body: JSON.stringify({ voice_id: id })
-    });
+    const r = await studio.postRaw(
+      "/api/voices/preview",
+      JSON.stringify({ voice_id: id }),
+      { "Content-Type": "application/json" }
+    );
     const tipo = r.headers.get("Content-Type") || "";
-    if (!r.ok) {
-      const j = await r.json().catch(() => ({}));
-      throw new Error(j.error || "Não foi possível ouvir esta voz.");
-    }
     if (tipo.indexOf("audio") < 0) {
-      const j = await r.json().catch(() => ({}));
-      throw new Error(j.error || "Resposta inesperada ao ouvir a voz.");
+      throw new Error("Resposta inesperada ao ouvir a voz.");
     }
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
