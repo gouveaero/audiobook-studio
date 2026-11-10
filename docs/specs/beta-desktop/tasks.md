@@ -12,7 +12,7 @@ Marcação de testes: sem marca, rodam sem modelo e em segundos (motor falso, EP
 
 ## Motores e geração
 
-- [ ] **T4.** `studio/engines/` com a interface, `omnivoice.py` e motor falso. `generate.py` passa a usá-la, sem mudar o comportamento atual. (R50)
+- [x] **T4.** `studio/engines/` com a interface, `omnivoice.py` e motor falso. `generate.py` passa a usá-la, sem mudar o comportamento atual. (R50)
 - [ ] **T5.** `pocket.py` com o pré-corte por tokens. (R10)
 - [ ] **T6.** Calibrar `rate_range` em dados reais e rodar o capítulo de referência. (R10, R11, R12) **Se R11 não passar depois de ajustar o corte:** não relaxe o critério. Deixe T6 sem marcar, registre os números em `bloqueios.md`, siga até a T24 e encerre com o resultado "incompleto".
 - [ ] **T7.** Trechos atômicos, travas com PID, descarte de `.wav` ilegível e retomada. (R13)
