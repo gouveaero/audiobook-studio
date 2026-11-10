@@ -23,10 +23,10 @@ Critério de aprovação:
 - Nenhuma mensagem ou painel visível em inglês ou com flags de linha de comando/nomes técnicos (R38, R39).
 - Nenhum texto cortado indevidamente nem botão sem ação (R39, R48).
 
-Resultado: reprovado na 2ª rodada (apenas 1 item restante em `home.html`).
+Resultado: aprovado na 3ª rodada.
 - Histórico (1ª rodada): reprovado por inglês/flags no `#log` de `dashboard.html`, `(RuntimeError)` e `work/generate.log` em `#dashErr`, `"voz de voz · pocket"` em `#tSub` e caminho absoluto em `ready.html`.
-- 2ª rodada:
-  - Correções confirmadas: zero travessões (`—` ou `–`) em todos os arquivos de `ui/` (incluindo `about.html`); `#log` de `dashboard.html` agora 100% em português (`"geração local pronta para começar"`, `"ritmo local 0,0×"`, `"gerando capítulo 01: ..."`, `tests/ui/capturas/08-texto-dashboard-log.png`); `#tSub` limpo (`"Autora Sintética · voz de Teste"`); `#dashErr` sanitizado por `_erro_publico`; `home.html` sem slug `p.id` nos cartões; `ready.html` sem caminho absoluto; `about.html` (`"Sobre"`, `tests/ui/capturas/08-texto-sobre.png`) em português e com botão `"Início"` funcional.
-  - Passo 1 (`home.html` - REPROVADO por botões visíveis sem ação / R48):
-    - Esperado: quando `DONATION_URL` e `ANDROID_WAITLIST_URL` estão vazios em `studio/brand.py`, os botões `"Doar"` (`#doar`) e `"Lista de espera Android"` (`#android`) não devem aparecer na tela (R48), e nenhum botão visível pode ficar sem ação.
-    - Obtido: em `ui/home.html` (linha 17), a regra CSS `button, label.btn, a.btn { ... display: inline-block; }` sobrescreve o estilo padrão do navegador para o atributo HTML `hidden` (`[hidden] { display: none }`). Mesmo com `doar.hidden = true` e `android.hidden = true` e sem atributo `href` (`href = null`), ambos os botões `"Doar"` (`74x43 px`) e `"Lista de espera Android"` (`212x43 px`) aparecem visíveis na tela inicial e clicar neles não faz nada (`tests/ui/capturas/08-texto-home-botoes.png` e `tests/ui/capturas/01-primeiro-uso-home.png`). Basta adicionar `[hidden] { display: none !important; }` no CSS de `ui/home.html`.
+- Histórico (2ª rodada): reprovadas apenas as âncoras `#doar` (`"Doar"`) e `#android` (`"Lista de espera Android"`) em `home.html`, que apareciam visíveis sem `href` porque `a.btn { display: inline-block }` vencia `[hidden]`.
+- 3ª rodada (todas as telas conferidas: `home.html`, primeiro uso, `review.html`, `voice.html`, `dashboard.html`, `ready.html` e `about.html`):
+  - Com `[hidden] { display: none !important; }` em `ui/fonts.css` e `DONATION_URL` / `ANDROID_WAITLIST_URL` vazios em `studio/brand.py`, `"Doar"` e `"Lista de espera Android"` ficam ocultos (`display: "none"`, `width: 0`) (`tests/ui/capturas/08-texto-home-botoes.png`).
+  - Zero elementos `[hidden]` vazando na tela (`hiddenLeaks: []`) em todas as 7 telas/estados.
+  - Zero travessões (`—` ou `–`), zero textos em inglês ou nomes técnicos de exceção/caminho de log, zero texto cortado e todos os botões visíveis possuem ação funcional (`tests/ui/capturas/08-texto-dashboard-log.png`, `tests/ui/capturas/08-texto-sobre.png`).
