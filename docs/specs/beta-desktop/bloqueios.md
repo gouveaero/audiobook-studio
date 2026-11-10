@@ -67,9 +67,10 @@ Cada item traz o que travou, a opção escolhida para seguir e o que o dono prec
 ### B15. Fim de frase cortado na narração do Pocket (T6, R11)
 - **Situação:** o dono ouviu o capítulo de referência e notou que, em alguns momentos, a fala para antes de a frase terminar. Medição do Motor: 1 em cada 4 dos 425 pedaços termina com a voz no nível de pico, sem silêncio no fim, e nesses o Whisper ouve "torno" por "tornozelo" e "desamp" por "desamparo". Causa apontada: o sinal de fim de fala do Pocket dispara cedo com o limiar padrão.
 - **Opção escolhida para seguir:** corrigir o limiar com um teste que falha nos pedaços cortados e medir R11 de novo. A conta do agente do Motor atingiu o limite de uso no meio da tarefa; ela passou para o agente do Livro, que estava livre.
-- **Para o dono decidir:** nada por enquanto. Ouvir o capítulo novo quando a correção entrar.
+- **Resolvido em 10/11/2026:** limiar de fim de fala do Pocket em 3,0 (o padrão é -4,0), 10 quadros gerados depois do fim e silêncio final aparado para 200 ms. As quatro frases de teste saem inteiras. R11 passou em seguida: ver B12. A correção foi feita pelo agente da Interface, porque o agente do Livro ficou parado pedindo aprovação para cada comando.
+- **Para o dono:** ouvir o capítulo novo (H1).
 
-## Bloqueio que impede o resultado "completo"
+## Bloqueio que impedia o resultado "completo" (resolvido)
 
 ### B12. R11 não passou depois de ajustar o corte (T6 sem marcar)
 - **Situação:** capítulo de referência, voz padrão exportada, Whisper `small` com o método de `local.md`. Números medidos pelo Motor (a repetição pelo Maestro está registrada em `evidencia.md`):
@@ -86,5 +87,6 @@ Cada item traz o que travou, a opção escolhida para seguir e o que o dono prec
 - **Repetição pelo Maestro (configuração da rodada 3, capítulo gerado de novo, Whisper refeito):** OmniVoice 36 (0,569%), teto 1,069% (cerca de 67 palavras), Pocket 103 (1,629%). Reprovado também.
 - **O que passou:** R10 (zero avisos "generation may skip words" em 425 pedaços) e o mecanismo de R12 (21 pedaços refeitos; 2 continuaram fora da faixa depois de 4 tentativas e ficaram marcados).
 - **Composição das 94 da rodada 3, segundo o Motor:** 30 são cinco anos por extenso que o Whisper escreve em algarismos (o mesmo erro pesa no OmniVoice); 32 são uma passagem de interjeições repetidas que ficou marcada depois de 4 tentativas e aparece na tela final; 32 estão espalhadas em trechos de 3 a 5 palavras. A variação entre rodadas é de cerca de 10 palavras. Na rodada 1, 72 palavras eram erro do Whisper no começo do arquivo.
-- **Opção escolhida para seguir:** o critério não foi relaxado. A T6 fica sem marcar, o código fica com a configuração da rodada 3 e o desenvolvimento segue até a T24. O resultado final é "incompleto" enquanto isto estiver aberto.
+- **Resolvido em 10/11/2026, sem relaxar o critério:** depois da correção do fim de fala (B15), o capítulo de referência gerado de novo mediu OmniVoice 45 (0,712%), teto 1,212%, Pocket 66 de 6.324 (1,044%). Passou. 4 pedaços refeitos (antes 21) e 1 trecho marcado (o 62, a passagem de interjeições repetidas). A T6 foi marcada. O histórico abaixo fica como registro.
+- **Opção escolhida na época:** o critério não foi relaxado. A T6 fica sem marcar, o código fica com a configuração da rodada 3 e o desenvolvimento segue até a T24. O resultado final é "incompleto" enquanto isto estiver aberto.
 - **Para o dono decidir:** (a) aceitar o Pocket com cerca de 1,3% a 1,5% de perda medida; (b) mudar o método de R11 para normalizar anos em algarismos dos dois lados, o que tira cerca de 30 palavras da conta do Pocket e parte das 45 do OmniVoice; (c) voltar à configuração da rodada 2, que mediu 84 (a diferença para a rodada 3 está dentro da variação); (d) outra saída. Vale ouvir o capítulo antes (H1).

@@ -34,6 +34,7 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 | R40, R42 | T20 (sem marcar) | `scripts/build_mac.sh` rodado pelo Maestro num clone limpo da `beta-desktop` | gerou o `.dmg`: 318.734.663 bytes (0,297 GB), abaixo de 1,5 GB. `ffmpeg` 8.1.2 LGPL com SHA-256 conferida, ícone, assinatura ad hoc, pacote de voz incluído, modelo fora |
 | R41, R43 | T20, T21 (sem marcar) | `pytest -m package` rodado pelo Maestro no app do clone limpo | 2 passaram (`NSMicrophoneUsageDescription`; dados pessoais no pacote) e **2 falharam**: o autoteste da janela real para em "falha ao criar projeto", e a geração do livro curto em ambiente limpo termina em erro depois de o download real passar. Devolvido à Interface |
 | R40 a R43 | T20, T21 | `scripts/build_mac.sh` num clone limpo da `beta-desktop` (commit ee98c1c) e `VERIFY_LAYERS=package scripts/verify_beta.sh` no app desse clone, rodados pelo Maestro | passaram, depois das correções da Interface (scipy no pacote, voz do pacote copiada para o projeto, autoteste com passos isolados e só em 127.0.0.1). `.dmg`: 338.847.123 bytes (0,316 GB). Autoteste na janela real: `getUserMedia` presente, áudio com `Range`, guias 2, 4, 5 e 6 aprovados; o build agora falha se o autoteste falhar. Camada de pacote: 4 passaram em 71 s, com `HOME` vazio, `PATH=/usr/bin:/bin`, download real do modelo e livro curto até o M4B com capítulos e capa. Não verificado: instalar pelo `.dmg` em outro Mac e o aviso do Gatekeeper (conferência humana) |
+| R10, R11, R12 com o Pocket, depois da correção do fim de fala | T6 | `tests/test_pocket_fim_de_fala.py` (3 sem modelo e 1 `@pytest.mark.model`) e `tests/test_referencia.py` (`@pytest.mark.model`), rodados pelo Maestro na `beta-desktop` (commit 6577d04) | **passaram.** Fim de fala: as 4 frases que saíam cortadas terminam inteiras, com 200 ms de silêncio. Capítulo de referência gerado de novo: OmniVoice perdeu 45 de 6.324 (0,712%), teto 1,212%, Pocket perdeu 66 (1,044%); 6.287 palavras ouvidas; 0 avisos em 425 pedaços; 4 pedaços refeitos, 1 fora da faixa depois de 4 tentativas, trecho 62 marcado. Em 33 min 52 s |
 
 ## Fechamento (T25)
 
@@ -104,6 +105,7 @@ Guias de navegação: os 10 aprovados (1 a 9 com motor falso; o 10 de ponta a po
 - **T7:** um teste do próprio Motor (`test_capitulo_com_include_false_nao_e_gerado`) foi reescrito na T9 para contar só eventos `done` do `progress.jsonl` e passou a exigir que nenhum evento do capítulo tirado apareça.
 - **T18, T19:** rota nova `POST /api/projects/<id>/save`, que copia o M4B para a pasta Downloads; `reveal` passa a mostrar o arquivo salvo e não devolve mais o caminho. Ver B14.
 - **T20:** o autoteste da janela toca o áudio no mudo.
+- **T6, fim de fala:** `EOS_THRESHOLD = 3.0`, `FRAMES_AFTER_EOS = 10` e `CAUDA_MS = 200` em `studio/engines/pocket.py`, escolhidos numa amostra de 40 pedaços do capítulo de referência. Ver B15.
 - **T6:** `rate_range` do Pocket de 12 a 19,5 caracteres por segundo; palavras inteiras em caixa alta vão em minúsculas antes do Pocket; preenchimento de frases curtas do Pocket ligado; evento `piece` no `progress.jsonl` com o ritmo de cada pedaço. R11 não passou: ver B12 em `bloqueios.md`.
 
 ## Execuções
@@ -333,3 +335,11 @@ Guias de navegação: os 10 aprovados (1 a 9 com motor falso; o 10 de ponta a po
 - Camada `model`: FALHOU (código 1). 1 failed, 6 passed, 233 deselected in 3231.63s (0:53:51)
 - Camada `package`: passou. 4 passed, 236 deselected in 146.91s (0:02:26)
 - Resultado: FALHOU
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 19:52
+- Commit: 6577d04 (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 232 passed, 12 deselected in 67.78s (0:01:07)
+- Resultado: passou
