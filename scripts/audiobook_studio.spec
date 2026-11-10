@@ -38,6 +38,7 @@ hiddenimports = [
     "studio.prepare_book", "studio.prepare_voice", "studio.local_api", "studio.audio",
     "studio.engines", "studio.engines.pocket", "studio.normalize_pt", "studio.boot",
     "studio.paths", "studio.webview_patch", "studio.brand", "studio.wavio",
+    "studio.selftest_engine", "studio.selftest",
     "pocket_tts", "num2words", "webview",
 ]
 
@@ -101,10 +102,14 @@ coll = COLLECT(
     name="Audiobook Studio",
 )
 
+_icns_env = os.environ.get("AUDIOBOOK_ICNS", "").strip()
+_icns = Path(_icns_env) if _icns_env else (RAIZ / "build" / "AppIcon.icns")
+_icon = str(_icns) if _icns.is_file() else None
+
 app = BUNDLE(
     coll,
     name="Audiobook Studio.app",
-    icon=None,
+    icon=_icon,
     bundle_identifier="studio.audiobook.app",
     info_plist={
         "CFBundleName": "Audiobook Studio",

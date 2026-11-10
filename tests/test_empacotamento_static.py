@@ -30,6 +30,9 @@ def test_build_mac_usa_codesign_adhoc_e_ffmpeg_lgpl():
     assert "LGPL" in BUILD_SH or "lgpl" in BUILD_SH.lower()
     assert "self-test" in BUILD_SH
     assert "uv venv" in BUILD_SH or "uv pip" in BUILD_SH
+    assert "FFMPEG_SHA_EXPECTED=" in BUILD_SH
+    assert "iconutil" in BUILD_SH and "sips" in BUILD_SH
+    assert "buildconf" in BUILD_SH
 
 
 def test_third_party_menciona_ffmpeg_embutido():
@@ -42,6 +45,10 @@ def test_boot_e_paths_existem():
     assert (RAIZ / "studio" / "boot.py").is_file()
     assert (RAIZ / "studio" / "paths.py").is_file()
     assert (RAIZ / "studio" / "webview_patch.py").is_file()
+    assert (RAIZ / "studio" / "selftest.py").is_file()
+    assert (RAIZ / "studio" / "selftest_engine.py").is_file()
     boot = (RAIZ / "studio" / "boot.py").read_text(encoding="utf8")
     assert "_worker" in boot
     assert "self-test" in boot or "self_test" in boot
+    app = (RAIZ / "studio" / "app.py").read_text(encoding="utf8")
+    assert "studio.selftest" in app
