@@ -247,39 +247,91 @@ def test_models_download_simulado_falha_e_completa(api, casa, monkeypatch):
     assert [p[0] for p in segundos] == sorted(p[0] for p in segundos)
 
 
+# Processo filho: download sem HF_TOKEN/HF_HOME herdados; progresso em JSONL.
+_DOWNLOAD_FILHO = r"""
+import json, os, sys
+from pathlib import Path
+casa, prog = Path(sys.argv[1]), Path(sys.argv[2])
+os.environ["AUDIOBOOK_STUDIO_HOME"] = str(casa)
+# ambiente limpo de Hugging Face (sem login nem cache global)
+for k in list(os.environ):
+    if k.startswith("HF_") or k in ("HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_HUB_CACHE", "TRANSFORMERS_CACHE"):
+        del os.environ[k]
+from studio import local_api as la
+from studio.brand import ensure_dirs
+ensure_dirs()
+assert not (casa / "hf" / "token").exists()
+visto = []
+def on_progress(done, total):
+    visto.append((int(done), int(total)))
+    prog.write_text(json.dumps(visto), encoding="utf8")
+la.baixar_modelo(on_progress)
+paths = [str(p) for p in la.caminhos_modelo_no_app()]
+sizes = [p.stat().st_size for p in la.caminhos_modelo_no_app()]
+print("@@" + json.dumps({"visto": visto, "paths": paths, "sizes": sizes, "hub_bytes": la.bytes_no_hub()}, ensure_ascii=False))
+"""
+
+
 @pytest.mark.model
-def test_models_download_real_e_motor_offline(casa, monkeypatch):
-    """Download real dos pesos sem clonagem; depois carrega o Pocket com HF_HUB_OFFLINE=1.
+def test_models_download_real_e_motor_offline(tmp_path):
+    """Download real dos pesos sem clonagem no hf/ do app; depois Pocket offline sem token.
 
-    Não rode aqui: o Maestro coloca na fila (um processo Pocket por vez).
+    O Maestro roda o teste completo (um processo Pocket por vez). A parte de download
+    pode ser depurada sozinha (ver tests/test_rotas_api.py docstring do helper).
     """
-    from studio import local_api as la
-    from studio.brand import ensure_dirs
-    from studio.engines import load_engine
+    import subprocess
+    import sys
 
-    monkeypatch.setenv("AUDIOBOOK_STUDIO_HOME", str(casa))
-    ensure_dirs()
-    visto = []
+    from tests.conftest import RAIZ
 
-    def on_progress(done, total):
-        visto.append((done, total))
-        la.set_models_status(status="baixando", bytes=done, total_bytes=total)
-
-    la.baixar_modelo(on_progress)
-    assert visto, "precisa haver progresso"
-    assert visto[0][0] == 0
+    casa = tmp_path / "app-home"
+    prog = tmp_path / "progress.json"
+    # sem herdar HF_HOME/HF_TOKEN do ambiente do desenvolvedor
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith("HF_") and k not in ("HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_HUB_CACHE", "TRANSFORMERS_CACHE")}
+    env["AUDIOBOOK_STUDIO_HOME"] = str(casa)
+    env["PYTHONPATH"] = str(RAIZ)
+    r = subprocess.run(
+        [sys.executable, "-c", _DOWNLOAD_FILHO, str(casa), str(prog)],
+        cwd=RAIZ, env=env, capture_output=True, text=True, timeout=3600,
+    )
+    assert r.returncode == 0, r.stderr[-3000:] + r.stdout[-1000:]
+    res = json.loads(r.stdout.split("@@", 1)[1])
+    visto = res["visto"]
+    assert visto and visto[0][0] == 0
     assert visto[-1][0] == visto[-1][1]
-    assert visto[-1][1] > 100_000_000  # ~672 MB
-    crescentes = [d for d, _ in visto]
-    assert crescentes == sorted(crescentes)
-    assert any(0 < d < visto[-1][1] for d, _ in visto)
+    assert visto[-1][1] > 100_000_000
+    assert any(0 < d < visto[-1][1] for d, _ in visto), visto[:20]
+    # arquivos só dentro do app, com tamanho real
+    assert res["paths"], "modelo não ficou em AUDIOBOOK_STUDIO_HOME/hf"
+    for p in res["paths"]:
+        assert p.startswith(str(casa / "hf")), p
+        assert Path(p).is_file()
+    assert sum(res["sizes"]) > 100_000_000
+    assert sum(res["sizes"]) == visto[-1][0] or abs(sum(res["sizes"]) - visto[-1][1]) < 1024 * 1024
+    assert not (casa / "hf" / "token").exists()
 
-    monkeypatch.setenv("HF_HOME", str(casa / "hf"))
-    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
-    e = load_engine("pocket", device="cpu")
-    e.load({"model": "portuguese_24l", "name": "rafael"})
-    w = e.synth("Olá, tudo bem?", 0)
-    assert len(w) > 1000
+    # carrega o motor offline a partir do hf/ do app (Maestro / fila de modelo)
+    from studio.engines import load_engine
+    env_off = dict(env)
+    env_off["HF_HOME"] = str(casa / "hf")
+    env_off["HF_HUB_CACHE"] = str(casa / "hf" / "hub")
+    env_off["HF_HUB_OFFLINE"] = "1"
+    prog_motor = r"""
+import os, sys
+from studio.engines import load_engine
+e = load_engine("pocket", device="cpu")
+e.load({"model": "portuguese_24l", "name": "rafael"})
+w = e.synth("Olá, tudo bem?", 0)
+print("@@", len(w))
+assert not os.path.exists(os.path.join(os.environ["HF_HOME"], "token"))
+"""
+    r2 = subprocess.run(
+        [sys.executable, "-c", prog_motor],
+        cwd=RAIZ, env=env_off, capture_output=True, text=True, timeout=1800,
+    )
+    assert r2.returncode == 0, r2.stderr[-3000:]
+    assert int(r2.stdout.split("@@")[1].strip()) > 1000
 
 
 # ---------- R31 start / redo reais ----------

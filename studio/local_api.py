@@ -365,64 +365,116 @@ def set_models_status(**kw) -> dict:
 
 
 def _hf_home_do_app() -> Path:
-    """HF_HOME do app: mesmo lugar em que o Pocket procura o cache (R35, R36)."""
+    """HF_HOME do app. Isola do cache global e de HF_HOME/HF_TOKEN herdados (R35, R36)."""
     ensure_dirs()
     hf = app_home() / "hf"
-    hf.mkdir(parents=True, exist_ok=True)
+    hub = hf / "hub"
+    hub.mkdir(parents=True, exist_ok=True)
     os.environ["HF_HOME"] = str(hf)
+    os.environ["HF_HUB_CACHE"] = str(hub)
+    os.environ["HUGGINGFACE_HUB_CACHE"] = str(hub)
+    for k in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"):
+        os.environ.pop(k, None)
     return hf
+
+
+def hub_cache_do_app() -> Path:
+    return _hf_home_do_app() / "hub"
+
+
+def bytes_no_hub(hub: Path | None = None) -> int:
+    """Soma o tamanho dos arquivos (completos ou .incomplete) no cache do app."""
+    root = hub or hub_cache_do_app()
+    if not root.is_dir():
+        return 0
+    total = 0
+    for p in root.rglob("*"):
+        if p.is_file():
+            try:
+                total += p.stat().st_size
+            except OSError:
+                pass
+    return total
+
+
+def caminhos_modelo_no_app() -> list[Path]:
+    """Arquivos finais do modelo dentro de AUDIOBOOK_STUDIO_HOME/hf/ (não no cache global)."""
+    hub = hub_cache_do_app()
+    achados = []
+    for fn in MODEL_FILES:
+        nome = Path(fn).name
+        cands = [p for p in hub.rglob(nome)
+                 if p.is_file() and "incomplete" not in p.name and MODEL_ID in str(p)]
+        snaps = [p for p in cands if "snapshots" in p.parts]
+        escolhido = (snaps or cands)
+        if escolhido:
+            achados.append(escolhido[0])
+    return achados
 
 
 def tamanho_modelo_remoto() -> int:
     """Soma o tamanho real dos arquivos que o Pocket baixa sem login."""
     from huggingface_hub import hf_hub_url, get_hf_file_metadata
+    _hf_home_do_app()
     total = 0
     for fn in MODEL_FILES:
         url = hf_hub_url(MODEL_REPO, fn, revision=MODEL_REVISION)
-        meta = get_hf_file_metadata(url)
+        meta = get_hf_file_metadata(url, token=False)
         total += int(meta.size or 0)
     return total or MODEL_TOTAL_BYTES
 
 
 def baixar_modelo(on_progress) -> None:
-    """Baixa os pesos sem clonagem para HF_HOME do app, com progresso em bytes.
+    """Baixa os pesos sem clonagem só para hf/ do app, com progresso em bytes.
 
-    É exatamente o que TTSModel.load_model(language=portuguese_24l) baixa sem login
-    (pocket_tts/config/portuguese_24l.yaml). Depois disso o motor carrega offline.
+    Ignora ~/.cache/huggingface e qualquer HF_HOME herdado. token=False: sem login.
+    É o que TTSModel.load_model(language=portuguese_24l) baixa sem login; depois carrega offline.
     """
     from huggingface_hub import hf_hub_download
-    from tqdm.auto import tqdm as base_tqdm
 
-    _hf_home_do_app()
+    hf = _hf_home_do_app()
+    hub = hf / "hub"
     try:
         total = tamanho_modelo_remoto()
     except Exception:
         total = MODEL_TOTAL_BYTES
     on_progress(0, total)
-    acc = [0]
 
-    class ProgTqdm(base_tqdm):
-        def __init__(self, *a, **k):
-            super().__init__(*a, **k)
-            self._seen = 0
+    stop = threading.Event()
+    ultimo = [0]
 
-        def update(self, n=1):
-            r = super().update(n)
-            delta = self.n - self._seen
-            self._seen = self.n
-            if delta:
-                acc[0] += delta
-                on_progress(min(acc[0], total), total)
-            return r
+    def watch():
+        while not stop.wait(0.3):
+            done = bytes_no_hub(hub)
+            if done > ultimo[0]:
+                ultimo[0] = done
+                on_progress(min(done, total), total)
 
-    for fn in MODEL_FILES:
-        hf_hub_download(
-            repo_id=MODEL_REPO,
-            filename=fn,
-            revision=MODEL_REVISION,
-            tqdm_class=ProgTqdm,
-        )
-    on_progress(total, total)
+    watcher = threading.Thread(target=watch, daemon=True)
+    watcher.start()
+    try:
+        for fn in MODEL_FILES:
+            hf_hub_download(
+                repo_id=MODEL_REPO,
+                filename=fn,
+                revision=MODEL_REVISION,
+                cache_dir=str(hub),
+                token=False,
+                force_download=False,
+            )
+            done = bytes_no_hub(hub)
+            ultimo[0] = max(ultimo[0], done)
+            on_progress(min(ultimo[0], total), total)
+    finally:
+        stop.set()
+        watcher.join(timeout=2)
+    # tamanho final pelos arquivos no app (não pelo cache global)
+    finais = caminhos_modelo_no_app()
+    if finais:
+        real = sum(p.stat().st_size for p in finais)
+        on_progress(real, real if real >= total * 0.9 else total)
+    else:
+        on_progress(total, total)
 
 
 _download_lock = threading.Lock()
