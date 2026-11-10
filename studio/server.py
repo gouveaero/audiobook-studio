@@ -12,7 +12,11 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, unquote
 
+from studio.assemble import montar_projeto
 from studio.brand import APP_NAME, ensure_dirs, app_home
+from studio import local_api
+from studio.local_api import baixar_modelo  # monkeypatchável nos testes
+from studio.prepare_book import BookError
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UI = os.path.join(os.path.dirname(HERE), "ui")
@@ -24,6 +28,7 @@ PORT = 8791
 
 AUDIO_TYPES = {".wav": "audio/wav", ".m4a": "audio/mp4", ".m4b": "audio/mp4"}
 AUDIO_ROOTS = ("voice", "chapters", "audiobook")
+PROJ_RE = re.compile(r"^/api/projects/([^/]+)(/.*)?$")
 
 
 def pj(*a):
@@ -226,32 +231,43 @@ class H(SimpleHTTPRequestHandler):
             return self.send_json({"error": "Pedido recusado."}, 403)
         if audio:
             return self.send_file_range(audio[0], audio[1])
-        if p == "/api/state":
-            if not P:
-                return self.send_json({"error": "Nenhum projeto aberto."}, 400)
-            return self.send_json(state())
-        if p == "/api/projects":
-            root = app_home() / "projects"
-            items = []
-            if root.is_dir():
-                for d in sorted(root.iterdir()):
-                    if d.is_dir() and (d / "book.json").exists():
-                        book = jload(str(d / "book.json"), {}) or {}
-                        items.append({"id": d.name, "title": book.get("title", d.name), "author": book.get("author", "")})
-            return self.send_json({"projects": items})
-        if p == "/config.json":
-            if not P:
-                return self.send_json({"app": APP_NAME})
-            return self.send_json(config())
-        if p == "/voice_peaks.json":
-            return self.send_json(jload(pj("voice", "peaks.json"), [.3] * 180) if P else [.3] * 180)
-        if p == "/api/voice":
-            if not P:
-                return self.send_json({"text": ""})
-            return self.send_json({"text": open(pj("voice", "ref.txt"), encoding="utf8").read().strip() if os.path.exists(pj("voice", "ref.txt")) else ""})
+        try:
+            if p == "/api/state":
+                if not P:
+                    return self.send_json({"error": "Nenhum projeto aberto."}, 400)
+                return self.send_json(state())
+            if p == "/api/projects":
+                return self.send_json({"projects": local_api.list_projects()})
+            if p == "/api/voices":
+                return self.send_json(local_api.list_voices())
+            if p == "/api/models":
+                return self.send_json(local_api.get_models_status())
+            if p == "/api/version":
+                return self.send_json(local_api.version_info())
+            m = PROJ_RE.match(p)
+            if m:
+                pid, rest = m.group(1), m.group(2) or ""
+                if rest == "/book":
+                    return self.send_json(local_api.load_book(pid))
+                if rest == "/state":
+                    return self.send_json(local_api.project_state(pid))
+            if p == "/config.json":
+                if not P:
+                    return self.send_json({"app": APP_NAME})
+                return self.send_json(config())
+            if p == "/voice_peaks.json":
+                return self.send_json(jload(pj("voice", "peaks.json"), [.3] * 180) if P else [.3] * 180)
+            if p == "/api/voice":
+                if not P:
+                    return self.send_json({"text": ""})
+                return self.send_json({"text": open(pj("voice", "ref.txt"), encoding="utf8").read().strip() if os.path.exists(pj("voice", "ref.txt")) else ""})
+        except FileNotFoundError:
+            return self.send_json({"error": "Projeto não encontrado."}, 404)
+        except Exception:
+            log_exception()
+            return self.send_json({"error": "Algo deu errado. Veja o log."}, 500)
         if p == "/":
             self.path = "/setup.html"
-        # Arquivos estáticos só de ui/; SimpleHTTPRequestHandler já restringe ao directory=UI
         super().do_GET()
 
     def body(self):
@@ -264,6 +280,60 @@ class H(SimpleHTTPRequestHandler):
         if P:
             os.makedirs(pj("work"), exist_ok=True)
         try:
+            if p == "/api/projects":
+                try:
+                    return self.send_json(local_api.create_project_from_epub(self.body()))
+                except BookError as e:
+                    return self.send_json({"error": str(e), "code": e.code}, 400)
+            if p == "/api/hf-login":
+                data = json.loads(self.body() or b"{}")
+                local_api.save_hf_token(data.get("token", ""))
+                return self.send_json({"ok": True})
+            if p == "/api/models/download":
+                return self.send_json(local_api.start_model_download(baixar=baixar_modelo))
+            if p == "/api/voices":
+                consent = (self.headers.get("X-Consent") or "").lower() in ("1", "true", "yes", "sim")
+                label = self.headers.get("X-Voice-Label") or "Minha voz"
+                text = self.headers.get("X-Voice-Text") or ""
+                try:
+                    return self.send_json(local_api.save_cloned_voice(
+                        self.body(), label=label, text=text, consent=consent))
+                except PermissionError as e:
+                    return self.send_json({"error": str(e)}, 400)
+                except ValueError as e:
+                    return self.send_json({"error": str(e)}, 400)
+            m = PROJ_RE.match(p)
+            if m:
+                pid, rest = m.group(1), m.group(2) or ""
+                if rest == "/start":
+                    return self.send_json(local_api.start_generate(pid))
+                if rest == "/pause":
+                    local_api.set_pause(pid, True); return self.send_json({"ok": True})
+                if rest == "/resume":
+                    local_api.set_pause(pid, False); return self.send_json({"ok": True})
+                if rest == "/cancel":
+                    local_api.set_cancel(pid); return self.send_json({"ok": True})
+                if rest == "/redo":
+                    o = json.loads(self.body() or b"{}")
+                    return self.send_json(local_api.redo_chunk(pid, o["chapter"], int(o["chunk"])))
+                if rest == "/assemble":
+                    o = json.loads(self.body() or b"{}")
+                    out = montar_projeto(str(local_api.project_path(pid)), video=bool(o.get("video")))
+                    return self.send_json({"ok": True, "out": out})
+                if rest == "/reveal":
+                    proj = local_api.project_path(pid)
+                    if not proj:
+                        raise FileNotFoundError(pid)
+                    m4b = next((proj / "audiobook").glob("*.m4b"), None) if (proj / "audiobook").is_dir() else None
+                    alvo = m4b or (proj / "audiobook")
+                    if sys.platform == "darwin":
+                        subprocess.Popen(["open", "-R", str(alvo)])
+                    return self.send_json({"ok": True, "path": str(alvo)})
+                if rest == "/voice":
+                    o = json.loads(self.body() or b"{}")
+                    local_api.attach_voice_to_project(pid, o["voice_id"])
+                    return self.send_json({"ok": True})
+            # --- rotas legadas do modo --project (skill) ---
             if p == "/api/book":
                 if not P:
                     return self.send_json({"error": "Abra um projeto antes."}, 400)
@@ -303,6 +373,12 @@ class H(SimpleHTTPRequestHandler):
                 if not P:
                     return self.send_json({"error": "Abra um projeto antes."}, 400)
                 spawn("assemble", [sys.executable, "-m", "studio.assemble", "--project", P], os.path.dirname(HERE)); return self.send_json({"ok": True})
+        except BookError as e:
+            return self.send_json({"error": str(e), "code": e.code}, 400)
+        except FileNotFoundError:
+            return self.send_json({"error": "Projeto não encontrado."}, 404)
+        except ValueError as e:
+            return self.send_json({"error": str(e)}, 400)
         except Exception:
             log_exception()
             return self.send_json({"error": "Algo deu errado. Veja o log."}, 500)
@@ -311,6 +387,19 @@ class H(SimpleHTTPRequestHandler):
     def do_PUT(self):
         if not self._guard(True):
             return
+        p = urlparse(self.path).path
+        try:
+            m = PROJ_RE.match(p)
+            if m and (m.group(2) or "") == "/book":
+                book = json.loads(self.body())
+                return self.send_json(local_api.save_book(m.group(1), book))
+        except FileNotFoundError:
+            return self.send_json({"error": "Projeto não encontrado."}, 404)
+        except ValueError as e:
+            return self.send_json({"error": str(e)}, 400)
+        except Exception:
+            log_exception()
+            return self.send_json({"error": "Algo deu errado. Veja o log."}, 500)
         self.send_json({"error": "rota desconhecida"}, 404)
 
     def do_DELETE(self):

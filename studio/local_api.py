@@ -1,0 +1,514 @@
+"""Lógica das rotas do app (projetos, voz, modelos, estado). Usada por studio.server."""
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+import unicodedata
+from pathlib import Path
+
+from studio.audio import eq_por_graves
+from studio.brand import APP_NAME, VOICE_FALLBACK, app_home, ensure_dirs
+from studio.prepare_book import BookError, build as build_book
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+
+# Catálogo de vozes prontas do Pocket (nomes públicos; sem baixar nada).
+VOZES_PRONTAS = [
+    "cosette", "marius", "javert", "alba", "jean", "anna", "vera", "fantine",
+    "charles", "paul", "eponine", "azelma", "george", "mary", "jane", "michael",
+    "eve", "bill_boerst", "peter_yearsley", "stuart_bell", "caro_davy",
+    "giovanni", "lola", "juergen", "rafael", "daan", "estelle",
+]
+
+MODEL_ID = "portuguese_24l"
+# Tamanho aproximado mostrado na UI (R36); o download real preenche o progresso.
+MODEL_TOTAL_BYTES = 850_000_000
+APP_VERSION = "0.1.0-beta"
+
+
+def slugify(texto: str) -> str:
+    s = unicodedata.normalize("NFKD", texto or "")
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = re.sub(r"[^a-zA-Z0-9]+", "-", s).strip("-").lower()
+    return (s[:60] or "livro")
+
+
+def projects_root() -> Path:
+    ensure_dirs()
+    return app_home() / "projects"
+
+
+def project_path(pid: str) -> Path | None:
+    if not pid or ".." in pid or "/" in pid or "\\" in pid:
+        return None
+    d = projects_root() / pid
+    return d if d.is_dir() else None
+
+
+def list_projects() -> list[dict]:
+    items = []
+    root = projects_root()
+    if not root.is_dir():
+        return items
+    for d in sorted(root.iterdir()):
+        book_path = d / "book.json"
+        if d.is_dir() and book_path.is_file():
+            try:
+                book = json.loads(book_path.read_text(encoding="utf8"))
+            except (OSError, ValueError):
+                book = {}
+            items.append({"id": d.name, "title": book.get("title", d.name), "author": book.get("author", "")})
+    return items
+
+
+def create_project_from_epub(epub_bytes: bytes) -> dict:
+    ensure_dirs()
+    tmp = app_home() / "tmp"
+    tmp.mkdir(parents=True, exist_ok=True)
+    epub_path = tmp / f"upload-{int(time.time() * 1000)}.epub"
+    epub_path.write_bytes(epub_bytes)
+    try:
+        # pasta provisória; o slug final vem do título
+        staging = tmp / f"staging-{os.getpid()}"
+        if staging.exists():
+            shutil.rmtree(staging)
+        staging.mkdir()
+        book_out = staging / "book.json"
+        try:
+            build_book(str(epub_path), str(book_out))
+        except BookError:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+        book = json.loads(book_out.read_text(encoding="utf8"))
+        base = slugify(book.get("title") or "livro")
+        pid = base
+        n = 2
+        while (projects_root() / pid).exists():
+            pid = f"{base}-{n}"
+            n += 1
+        dest = projects_root() / pid
+        staging.rename(dest)
+        # copia o epub para o projeto
+        shutil.copy2(epub_path, dest / "book.epub")
+        for sub in ("work/chunks", "chapters", "voice", "audiobook"):
+            (dest / sub).mkdir(parents=True, exist_ok=True)
+        (dest / "config.json").write_text(
+            json.dumps({"motor": "pocket", "model": MODEL_ID}, ensure_ascii=False, indent=1),
+            encoding="utf8",
+        )
+        return {
+            "id": pid,
+            "title": book.get("title", pid),
+            "author": book.get("author", ""),
+            "chapters": len(book.get("chapters", [])),
+        }
+    finally:
+        try:
+            epub_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def load_book(pid: str) -> dict:
+    p = project_path(pid)
+    if not p:
+        raise FileNotFoundError(pid)
+    return json.loads((p / "book.json").read_text(encoding="utf8"))
+
+
+def save_book(pid: str, book: dict) -> dict:
+    p = project_path(pid)
+    if not p:
+        raise FileNotFoundError(pid)
+    # R9: respeita include e title por capítulo
+    if "chapters" not in book or not isinstance(book["chapters"], list):
+        raise ValueError("book.json sem capítulos")
+    for ch in book["chapters"]:
+        if "include" not in ch:
+            ch["include"] = True
+        if "title" not in ch:
+            raise ValueError("capítulo sem título")
+    (p / "book.json").write_text(json.dumps(book, ensure_ascii=False, indent=1), encoding="utf8")
+    return book
+
+
+def read_job(pid: str) -> dict | None:
+    p = project_path(pid)
+    if not p:
+        return None
+    path = p / "work" / "job.json"
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf8"))
+    except (OSError, ValueError):
+        return None
+
+
+def write_job(pid: str, job: dict) -> None:
+    p = project_path(pid)
+    if not p:
+        raise FileNotFoundError(pid)
+    work = p / "work"
+    work.mkdir(parents=True, exist_ok=True)
+    path = work / "job.json"
+    tmp = work / "job.json.tmp"
+    tmp.write_text(json.dumps(job, ensure_ascii=False, indent=1), encoding="utf8")
+    os.replace(tmp, path)
+
+
+def project_state(pid: str) -> dict:
+    p = project_path(pid)
+    if not p:
+        raise FileNotFoundError(pid)
+    job = read_job(pid) or {}
+    status = job.get("status") or "parado"
+    if (p / "work" / "cancel").exists():
+        status = "cancelando" if status == "rodando" else status
+    elif (p / "work" / "pause").exists() and status == "rodando":
+        status = "pausado"
+    book = {}
+    try:
+        book = json.loads((p / "book.json").read_text(encoding="utf8"))
+    except (OSError, ValueError):
+        pass
+    chapters = [c for c in book.get("chapters", []) if c.get("include", True)]
+    chars = {(c["id"], k): len(t) for c in chapters for k, t in enumerate(c.get("chunks", []))}
+    tot = sum(chars.values()) or 1
+    done_ids = []
+    if (p / "chapters").is_dir():
+        done_ids = sorted(f[:-4] for f in os.listdir(p / "chapters") if re.fullmatch(r"\w+\.m4a", f))
+    got = 0
+    chunks_dir = p / "work" / "chunks"
+    if chunks_dir.is_dir():
+        for f in os.listdir(chunks_dir):
+            m = re.fullmatch(r"(\w+)_(\d+)\.wav", f)
+            if m and (m.group(1), int(m.group(2))) in chars:
+                got += chars[(m.group(1), int(m.group(2)))]
+    eta = job.get("eta_seconds")
+    return {
+        "status": status,
+        "job": job,
+        "total": got / tot,
+        "hours": round(got / 13 / 3600, 2),
+        "done": done_ids,
+        "titles": {c["id"]: c["title"] for c in book.get("chapters", [])},
+        "eta_seconds": eta,
+        "flagged": job.get("flagged") or [],
+    }
+
+
+def set_pause(pid: str, paused: bool) -> None:
+    p = project_path(pid)
+    if not p:
+        raise FileNotFoundError(pid)
+    work = p / "work"
+    work.mkdir(parents=True, exist_ok=True)
+    flag = work / "pause"
+    if paused:
+        flag.write_text("1", encoding="utf8")
+        job = read_job(pid) or {}
+        job["status"] = "pausado"
+        write_job(pid, job)
+    else:
+        flag.unlink(missing_ok=True)
+        job = read_job(pid) or {}
+        if job.get("status") == "pausado":
+            job["status"] = "rodando"
+            write_job(pid, job)
+
+
+def set_cancel(pid: str) -> None:
+    p = project_path(pid)
+    if not p:
+        raise FileNotFoundError(pid)
+    work = p / "work"
+    work.mkdir(parents=True, exist_ok=True)
+    (work / "cancel").write_text("1", encoding="utf8")
+    job = read_job(pid) or {}
+    job["status"] = "cancelando"
+    write_job(pid, job)
+
+
+def start_generate(pid: str, *, only: str = "", extra: dict | None = None) -> dict:
+    p = project_path(pid)
+    if not p:
+        raise FileNotFoundError(pid)
+    cfg = {}
+    try:
+        cfg = json.loads((p / "config.json").read_text(encoding="utf8"))
+    except (OSError, ValueError):
+        pass
+    motor = cfg.get("motor") or "pocket"
+    (p / "work").mkdir(parents=True, exist_ok=True)
+    for f in ("pause", "cancel"):
+        (p / "work" / f).unlink(missing_ok=True)
+    cmd = [sys.executable, "-m", "studio.generate", "--project", str(p), "--motor", motor]
+    if only:
+        cmd.extend(["--only", only])
+    log = open(p / "work" / "generate.log", "ab")
+    proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=log, stderr=subprocess.STDOUT)
+    job = {
+        "pid": proc.pid,
+        "status": "rodando",
+        "motor": motor,
+        "model": cfg.get("model") or MODEL_ID,
+        "started": time.time(),
+        "eta_seconds": None,
+    }
+    if only:
+        job["only"] = only
+    if extra:
+        job.update(extra)
+    write_job(pid, job)
+
+    def waiter():
+        code = proc.wait()
+        cur = read_job(pid) or {}
+        redo = cur.get("redo")
+        if (p / "work" / "cancel").exists():
+            cur["status"] = "cancelado"
+        else:
+            cur["status"] = "concluido" if code == 0 else "erro"
+        if redo:
+            cur["redo"] = redo
+        write_job(pid, cur)
+
+    threading.Thread(target=waiter, daemon=True).start()
+    return job
+
+
+def redo_chunk(pid: str, chapter: str, chunk: int) -> dict:
+    p = project_path(pid)
+    if not p:
+        raise FileNotFoundError(pid)
+    chunks = p / "work" / "chunks"
+    chunks.mkdir(parents=True, exist_ok=True)
+    stem = f"{chapter}_{int(chunk):04d}"
+    for f in list(chunks.glob(stem + "*")):
+        f.unlink(missing_ok=True)
+    cap = p / "chapters" / f"{chapter}.m4a"
+    cap.unlink(missing_ok=True)
+    return start_generate(pid, only=chapter, extra={
+        "status": "refazendo",
+        "redo": {"chapter": chapter, "chunk": int(chunk)},
+    })
+
+
+def save_hf_token(token: str) -> None:
+    ensure_dirs()
+    token = (token or "").strip()
+    if not token:
+        raise ValueError("Informe o token do Hugging Face.")
+    path = app_home() / "hf" / "token"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(token + "\n", encoding="utf8")
+    os.chmod(path, 0o600)
+    # HF_HOME do app: huggingface_hub lê token de lá se configurado
+    hf_home = app_home() / "hf"
+    os.environ.setdefault("HF_HOME", str(hf_home))
+
+
+def models_status_path() -> Path:
+    ensure_dirs()
+    return app_home() / "models" / f"{MODEL_ID}.json"
+
+
+def get_models_status() -> dict:
+    path = models_status_path()
+    if path.is_file():
+        try:
+            data = json.loads(path.read_text(encoding="utf8"))
+            data.setdefault("total_bytes", MODEL_TOTAL_BYTES)
+            data.setdefault("model", MODEL_ID)
+            return data
+        except (OSError, ValueError):
+            pass
+    return {
+        "model": MODEL_ID,
+        "status": "ausente",
+        "bytes": 0,
+        "total_bytes": MODEL_TOTAL_BYTES,
+        "error": None,
+    }
+
+
+def set_models_status(**kw) -> dict:
+    cur = get_models_status()
+    cur.update(kw)
+    path = models_status_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(cur, ensure_ascii=False, indent=1), encoding="utf8")
+    return cur
+
+
+def baixar_modelo(dest: Path, on_progress) -> None:
+    """Baixa os pesos do modelo. Em teste (PYTEST_CURRENT_TEST) exige monkeypatch."""
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        raise RuntimeError("baixar_modelo bloqueado em teste; injete um falso")
+    # Implementação real: huggingface_hub (só fora de teste; precisa de rede).
+    from huggingface_hub import hf_hub_download
+
+    def _cb(done, total):
+        on_progress(done, total or MODEL_TOTAL_BYTES)
+
+    _cb(0, MODEL_TOTAL_BYTES)
+    path = hf_hub_download(
+        repo_id="kyutai/pocket-tts",
+        filename=f"languages/{MODEL_ID}/model.safetensors",
+        local_dir=str(dest.parent),
+    )
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if Path(path) != dest:
+        shutil.copy2(path, dest)
+    _cb(MODEL_TOTAL_BYTES, MODEL_TOTAL_BYTES)
+
+
+_download_lock = threading.Lock()
+
+
+def start_model_download(baixar=baixar_modelo) -> dict:
+    cur = get_models_status()
+    if cur.get("status") == "baixando":
+        return cur
+    set_models_status(status="baixando", bytes=0, error=None)
+    dest = app_home() / "models" / MODEL_ID / "model.safetensors"
+
+    def run():
+        with _download_lock:
+            try:
+                def on_progress(done, total):
+                    set_models_status(status="baixando", bytes=int(done), total_bytes=int(total or MODEL_TOTAL_BYTES))
+
+                baixar(dest, on_progress)
+                set_models_status(status="pronto", bytes=get_models_status().get("total_bytes", MODEL_TOTAL_BYTES), error=None)
+            except Exception as e:
+                # mensagem simples; sem traceback na API
+                set_models_status(status="erro", error="A descarga falhou. Verifique a conexão e tente de novo.")
+
+    threading.Thread(target=run, daemon=True).start()
+    return get_models_status()
+
+
+def voice_pack_dir() -> Path | None:
+    env = os.environ.get("VOICE_PACK_DIR")
+    if env and Path(env).is_dir():
+        return Path(env)
+    bundled = ROOT / "build" / "voice-pack"
+    return bundled if bundled.is_dir() else None
+
+
+def list_voices() -> dict:
+    voices = []
+    selected = None
+    pack = voice_pack_dir()
+    if pack and (pack / "manifest.json").is_file():
+        man = json.loads((pack / "manifest.json").read_text(encoding="utf8"))
+        voices.append({**man, "kind": "padrao"})
+        selected = man.get("id", "padrao")
+    for name in VOZES_PRONTAS:
+        voices.append({
+            "id": name,
+            "name": name,
+            "label": name.replace("_", " ").title(),
+            "engine": "pocket",
+            "model": MODEL_ID,
+            "kind": "pronta",
+        })
+    if not selected:
+        selected = VOICE_FALLBACK
+    # vozes clonadas do usuário
+    vroot = app_home() / "voices"
+    if vroot.is_dir():
+        for d in sorted(vroot.iterdir()):
+            man_path = d / "manifest.json"
+            if man_path.is_file():
+                man = json.loads(man_path.read_text(encoding="utf8"))
+                voices.insert(0 if man.get("id") == selected else len(voices), {**man, "kind": "clonada"})
+    return {"voices": voices, "selected": selected, "ai_notice": "A narração é gerada por inteligência artificial."}
+
+
+def save_cloned_voice(audio_bytes: bytes, *, label: str, text: str, consent: bool) -> dict:
+    if not consent:
+        raise PermissionError("Marque a declaração de que a voz é sua ou que você tem autorização.")
+    ensure_dirs()
+    base = slugify(label or "minha-voz")
+    vid = base
+    n = 2
+    while (app_home() / "voices" / vid).exists():
+        vid = f"{base}-{n}"
+        n += 1
+    vdir = app_home() / "voices" / vid
+    vdir.mkdir(parents=True)
+    ref = vdir / "ref.wav"
+    # se já for WAV, grava direto; senão tenta ffmpeg
+    if audio_bytes[:4] == b"RIFF":
+        ref.write_bytes(audio_bytes)
+    else:
+        raw = vdir / "_upload"
+        raw.write_bytes(audio_bytes)
+        r = subprocess.run(
+            ["ffmpeg", "-y", "-i", str(raw), "-ac", "1", "-ar", "16000", str(ref)],
+            capture_output=True, text=True,
+        )
+        raw.unlink(missing_ok=True)
+        if r.returncode or not ref.is_file():
+            shutil.rmtree(vdir, ignore_errors=True)
+            raise ValueError("Não foi possível ler o áudio. Envie um arquivo WAV ou M4A.")
+    (vdir / "ref.txt").write_text((text or "").strip() + "\n", encoding="utf8")
+    usar_eq = bool(eq_por_graves(str(ref)))
+    man = {
+        "id": vid,
+        "label": label or "Minha voz",
+        "engine": "pocket",
+        "model": MODEL_ID,
+        "file": f"voz_{MODEL_ID}.safetensors",
+        "eq": usar_eq,
+        "kind": "clonada",
+    }
+    (vdir / "manifest.json").write_text(json.dumps(man, ensure_ascii=False, indent=1), encoding="utf8")
+    return {"id": vid, "label": man["label"], "eq": usar_eq}
+
+
+def attach_voice_to_project(pid: str, voice_id: str) -> None:
+    """Copia o manifest da voz para voice/manifest.json do projeto (onde a geração lê)."""
+    p = project_path(pid)
+    if not p:
+        raise FileNotFoundError(pid)
+    src = None
+    pack = voice_pack_dir()
+    if pack and (pack / "manifest.json").is_file():
+        man = json.loads((pack / "manifest.json").read_text(encoding="utf8"))
+        if man.get("id") == voice_id:
+            src = pack / "manifest.json"
+    if src is None:
+        cand = app_home() / "voices" / voice_id / "manifest.json"
+        if cand.is_file():
+            src = cand
+    if src is None:
+        # voz pronta: só grava o manifesto sem arquivo
+        man = {
+            "id": voice_id, "label": voice_id, "engine": "pocket",
+            "model": MODEL_ID, "name": voice_id, "eq": False,
+        }
+        (p / "voice").mkdir(parents=True, exist_ok=True)
+        (p / "voice" / "manifest.json").write_text(json.dumps(man, ensure_ascii=False, indent=1), encoding="utf8")
+        return
+    (p / "voice").mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, p / "voice" / "manifest.json")
+    # copia ref se existir (voz clonada / pacote)
+    for name in ("ref.wav", "ref.txt"):
+        f = src.parent / name
+        if f.is_file():
+            shutil.copy2(f, p / "voice" / name)
+
+
+def version_info() -> dict:
+    return {"app": APP_NAME, "version": APP_VERSION}
