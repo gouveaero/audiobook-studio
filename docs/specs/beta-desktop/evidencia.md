@@ -38,6 +38,7 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 - **T8:** estados em `work/job.json`: gerando, pausado, cancelado, montando, pronto, erro e concluido (tarefa que acaba sem o livro inteiro). Pausa e cancelamento lidos entre pedaços.
 - **T9:** a geração na VM roda com `--no-assemble`; a montagem continua no computador.
 - **T7:** um teste do próprio Motor (`test_capitulo_com_include_false_nao_e_gerado`) foi reescrito na T9 para contar só eventos `done` do `progress.jsonl` e passou a exigir que nenhum evento do capítulo tirado apareça.
+- **T6:** `rate_range` do Pocket de 12 a 19,5 caracteres por segundo; palavras inteiras em caixa alta vão em minúsculas antes do Pocket; preenchimento de frases curtas do Pocket ligado; evento `piece` no `progress.jsonl` com o ritmo de cada pedaço. R11 não passou: ver B12 em `bloqueios.md`.
 
 ## Execuções
 
@@ -191,4 +192,12 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 - Commit: 88b14af (com alterações não commitadas)
 - Camadas pedidas: base
 - Camada `base`: passou. 208 passed, 7 deselected in 89.08s (0:01:29)
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 16:20
+- Commit: 78e2ed4 (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 209 passed, 7 deselected in 64.44s (0:01:04)
 - Resultado: passou
