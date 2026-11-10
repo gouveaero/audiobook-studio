@@ -34,16 +34,28 @@ def auth(s, extra=None):
     return h
 
 
-def wait_final(api, pid, timeout=90):
-    # Status reais de work/job.json (Motor T8): gerando/pausado/montando → pronto|concluido|erro|cancelado
+def wait_final(api, pid, timeout=90, *, leave_first=False):
+    """Espera status final de work/job.json (Motor T8).
+
+    leave_first=True: exige ver um status ativo antes do final (ex.: depois de redo,
+    para não confundir com o 'pronto' da geração anterior).
+    """
     finais = {"concluido", "pronto", "erro", "cancelado"}
+    ativos = {"gerando", "rodando", "refazendo", "montando", "pausado", "cancelando"}
     deadline = time.time() + timeout
     last = None
+    viu_ativo = not leave_first
     while time.time() < deadline:
         st, _, body = api.req("GET", f"/api/projects/{pid}/state")
         assert st == 200, body
         last = json.loads(body)
-        if last.get("status") in finais:
+        status = last.get("status")
+        if not viu_ativo:
+            if status in ativos:
+                viu_ativo = True
+            time.sleep(0.05)
+            continue
+        if status in finais:
             return last
         time.sleep(0.2)
     raise AssertionError(f"timeout esperando estado final; último={last}")
@@ -129,8 +141,8 @@ def test_put_include_e_titulo_respeitados_na_montagem(api, casa, ambiente_fake):
     st, _, b = api.req("POST", f"/api/projects/{pid}/start", headers=auth(api))
     assert st == 200, b
     state = wait_final(api, pid, timeout=120)
-    assert state["status"] == "concluido", state
-
+    assert state["status"] in ("concluido", "pronto"), state
+    # Motor T8 já monta o M4B ao terminar; assemble manual continua ok
     st, _, b = api.req(
         "POST", f"/api/projects/{pid}/assemble",
         body=json.dumps({"video": False}).encode(),
@@ -351,7 +363,7 @@ def test_start_gera_capitulo_com_motor_falso(api, casa, ambiente_fake, tmp_path)
     st, _, b = api.req("POST", f"/api/projects/{pid}/start", headers=auth(api))
     assert st == 200, b
     state = wait_final(api, pid)
-    assert state["status"] == "concluido", state
+    assert state["status"] in ("concluido", "pronto"), state
     assert (proj / "chapters" / "01.m4a").is_file()
     assert len(registro.read_text(encoding="utf8").splitlines()) == 2
 
@@ -367,7 +379,7 @@ def test_redo_refaz_so_o_trecho_com_motor_falso(api, casa, ambiente_fake, tmp_pa
     st, _, b = api.req("POST", f"/api/projects/{pid}/start", headers=auth(api))
     assert st == 200, b
     state = wait_final(api, pid)
-    assert state["status"] == "concluido", state
+    assert state["status"] in ("concluido", "pronto"), state
     assert len(registro.read_text(encoding="utf8").splitlines()) == 3
 
     chunks = proj / "work" / "chunks"
@@ -386,8 +398,8 @@ def test_redo_refaz_so_o_trecho_com_motor_falso(api, casa, ambiente_fake, tmp_pa
         headers=auth(api, {"Content-Type": "application/json"}),
     )
     assert st == 200, b
-    state = wait_final(api, pid)
-    assert state["status"] == "concluido", state
+    state = wait_final(api, pid, leave_first=True)
+    assert state["status"] in ("concluido", "pronto"), state
 
     linhas = registro.read_text(encoding="utf8").splitlines()
     novas = linhas[n_antes:]

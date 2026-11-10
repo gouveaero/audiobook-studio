@@ -185,16 +185,24 @@ def write_job(pid: str, job: dict) -> None:
     os.replace(tmp, path)
 
 
+# Status finais que o generate grava em work/job.json (Motor T8); a interface não sobrescreve.
+JOB_FINAIS = frozenset({"pronto", "concluido", "erro", "cancelado"})
+JOB_ATIVOS = frozenset({"gerando", "rodando", "refazendo", "montando"})
+
+
 def project_state(pid: str) -> dict:
     p = project_path(pid)
     if not p:
         raise FileNotFoundError(pid)
     job = read_job(pid) or {}
     status = job.get("status") or "parado"
-    if (p / "work" / "cancel").exists():
-        status = "cancelando" if status == "rodando" else status
-    elif (p / "work" / "pause").exists() and status == "rodando":
-        status = "pausado"
+    # Preferir o que o generate já gravou; pause/cancel só coloram enquanto ativo.
+    if status not in JOB_FINAIS:
+        if (p / "work" / "cancel").exists() and status in JOB_ATIVOS | {"pausado"}:
+            status = "cancelando"
+        elif (p / "work" / "pause").exists() and status in JOB_ATIVOS:
+            status = "pausado"
+    # Progresso: chars_done do job quando existir; senão estima pelos WAV.
     book = {}
     try:
         book = json.loads((p / "book.json").read_text(encoding="utf8"))
@@ -202,28 +210,61 @@ def project_state(pid: str) -> dict:
         pass
     chapters = [c for c in book.get("chapters", []) if c.get("include", True)]
     chars = {(c["id"], k): len(t) for c in chapters for k, t in enumerate(c.get("chunks", []))}
-    tot = sum(chars.values()) or 1
+    tot = int(job.get("chars_total") or 0) or (sum(chars.values()) or 1)
+    done_chars = job.get("chars_done")
+    if done_chars is None:
+        done_chars = 0
+        chunks_dir = p / "work" / "chunks"
+        if chunks_dir.is_dir():
+            for f in os.listdir(chunks_dir):
+                m = re.fullmatch(r"(\w+)_(\d+)\.wav", f)
+                if m and (m.group(1), int(m.group(2))) in chars:
+                    done_chars += chars[(m.group(1), int(m.group(2)))]
     done_ids = []
     if (p / "chapters").is_dir():
         done_ids = sorted(f[:-4] for f in os.listdir(p / "chapters") if re.fullmatch(r"\w+\.m4a", f))
-    got = 0
-    chunks_dir = p / "work" / "chunks"
-    if chunks_dir.is_dir():
-        for f in os.listdir(chunks_dir):
-            m = re.fullmatch(r"(\w+)_(\d+)\.wav", f)
-            if m and (m.group(1), int(m.group(2))) in chars:
-                got += chars[(m.group(1), int(m.group(2)))]
+    flagged = _flagged_from_progress(p)
     eta = job.get("eta_seconds")
+    cps = job.get("chars_per_second")
     return {
         "status": status,
         "job": job,
-        "total": got / tot,
-        "hours": round(got / 13 / 3600, 2),
+        "total": min(1.0, float(done_chars) / float(tot or 1)),
+        "hours": round(float(done_chars) / 13 / 3600, 2),
         "done": done_ids,
         "titles": {c["id"]: c["title"] for c in book.get("chapters", [])},
         "eta_seconds": eta,
-        "flagged": job.get("flagged") or [],
+        "chars_done": done_chars,
+        "chars_total": tot,
+        "chars_per_second": cps,
+        "m4b": job.get("m4b"),
+        "error": job.get("error"),
+        "flagged": flagged,
     }
+
+
+def _flagged_from_progress(p: Path) -> list[dict]:
+    """Trechos marcados em work/progress.jsonl (para a tela final / refazer)."""
+    path = p / "work" / "progress.jsonl"
+    if not path.is_file():
+        return []
+    out = []
+    try:
+        for line in path.read_text(encoding="utf8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            if ev.get("kind") == "flagged" or (ev.get("kind") == "done" and ev.get("flagged")):
+                ch = ev.get("ch") or ev.get("chapter")
+                for k in (ev.get("flagged") or ([ev.get("chunk")] if ev.get("kind") == "flagged" else [])):
+                    if ch is not None and k is not None:
+                        out.append({"chapter": str(ch), "chunk": int(k)})
+    except OSError:
+        pass
+    return out
 
 
 def set_pause(pid: str, paused: bool) -> None:
@@ -235,15 +276,9 @@ def set_pause(pid: str, paused: bool) -> None:
     flag = work / "pause"
     if paused:
         flag.write_text("1", encoding="utf8")
-        job = read_job(pid) or {}
-        job["status"] = "pausado"
-        write_job(pid, job)
+        # o generate passa a status "pausado" ao ler o arquivo; não forçar se já finalizou
     else:
         flag.unlink(missing_ok=True)
-        job = read_job(pid) or {}
-        if job.get("status") == "pausado":
-            job["status"] = "rodando"
-            write_job(pid, job)
 
 
 def set_cancel(pid: str) -> None:
@@ -253,9 +288,7 @@ def set_cancel(pid: str) -> None:
     work = p / "work"
     work.mkdir(parents=True, exist_ok=True)
     (work / "cancel").write_text("1", encoding="utf8")
-    job = read_job(pid) or {}
-    job["status"] = "cancelando"
-    write_job(pid, job)
+    # o generate grava "cancelado"; não sobrescrever job aqui
 
 
 def start_generate(pid: str, *, only: str = "", extra: dict | None = None) -> dict:
@@ -278,11 +311,14 @@ def start_generate(pid: str, *, only: str = "", extra: dict | None = None) -> di
     proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=log, stderr=subprocess.STDOUT)
     job = {
         "pid": proc.pid,
-        "status": "rodando",
+        "status": "gerando",
         "motor": motor,
         "model": cfg.get("model") or MODEL_ID,
         "started": time.time(),
         "eta_seconds": None,
+        "chars_total": None,
+        "chars_done": 0,
+        "chars_per_second": None,
     }
     if only:
         job["only"] = only
@@ -293,13 +329,13 @@ def start_generate(pid: str, *, only: str = "", extra: dict | None = None) -> di
     def waiter():
         code = proc.wait()
         cur = read_job(pid) or {}
-        redo = cur.get("redo")
+        # generate já grava pronto/concluido/cancelado/erro; não apagar
+        if cur.get("status") in JOB_FINAIS:
+            return
         if (p / "work" / "cancel").exists():
             cur["status"] = "cancelado"
         else:
             cur["status"] = "concluido" if code == 0 else "erro"
-        if redo:
-            cur["redo"] = redo
         write_job(pid, cur)
 
     threading.Thread(target=waiter, daemon=True).start()
