@@ -83,6 +83,7 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   <div class="toasts" id="toasts"></div>
   <div class="abs hint">teclas: 1 ciano, 2 verde, 3 laranja</div>
 </main>
+<script src="/studio.js"></script>
 <script>
 const $ = (id) => document.getElementById(id), q = new URLSearchParams(location.search), DEMO = q.has("demo");
 const fmt = (n, d = 0) => n.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });

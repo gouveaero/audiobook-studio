@@ -7,9 +7,10 @@
 Escuta só em 127.0.0.1. POST/PUT/DELETE exigem X-Studio-Token. Todo pedido exige Host local.
 Os uploads vão para o projeto; a geração roda em subprocessos (studio.generate / studio.cloud).
 """
-import argparse, json, os, re, secrets, subprocess, sys, threading, time
+import argparse, hmac, json, os, re, secrets, subprocess, sys, threading, time, traceback
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
-from urllib.parse import urlparse
+from pathlib import Path
+from urllib.parse import urlparse, unquote
 
 from studio.brand import APP_NAME, ensure_dirs, app_home
 
@@ -20,6 +21,9 @@ JOBS = {}
 HIST = []
 SESSION_TOKEN = ""
 PORT = 8791
+
+AUDIO_TYPES = {".wav": "audio/wav", ".m4a": "audio/mp4", ".m4b": "audio/mp4"}
+AUDIO_ROOTS = ("voice", "chapters", "audiobook")
 
 
 def pj(*a):
@@ -86,6 +90,57 @@ def spawn(name, cmd, cwd):
     return p
 
 
+def redact_secrets(text: str) -> str:
+    if SESSION_TOKEN:
+        text = text.replace(SESSION_TOKEN, "[sessao]")
+    text = re.sub(r"hf_[A-Za-z0-9]{20,}", "[hf]", text)
+    return text
+
+
+def log_exception():
+    """Grava traceback em AUDIOBOOK_STUDIO_HOME/logs/server.log, sem tokens (R38)."""
+    try:
+        ensure_dirs()
+        log_dir = app_home() / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        body = redact_secrets(traceback.format_exc())
+        with open(log_dir / "server.log", "a", encoding="utf8") as f:
+            f.write(f"\n--- {stamp} ---\n{body}\n")
+    except Exception:
+        pass
+
+
+def resolve_project_audio(url_path: str):
+    """Resolve /voice|chapters|audiobook/... para um arquivo sob P. None = não é áudio do projeto; False = tentativa inválida."""
+    if not P:
+        return None
+    raw = unquote(url_path.split("?", 1)[0])
+    if ".." in raw or "\\" in raw:
+        return False
+    parts = Path(raw.lstrip("/")).parts
+    if not parts or parts[0] not in AUDIO_ROOTS:
+        return None
+    if any(p in (".", "..") for p in parts):
+        return False
+    suffix = Path(parts[-1]).suffix.lower()
+    if suffix not in AUDIO_TYPES:
+        return None
+    root = Path(P).resolve()
+    full = (root.joinpath(*parts)).resolve()
+    try:
+        full.relative_to(root)
+    except ValueError:
+        return False
+    if not full.is_file():
+        return None
+    return str(full), AUDIO_TYPES[suffix]
+
+
+def make_server(port: int) -> ThreadingHTTPServer:
+    return ThreadingHTTPServer(("127.0.0.1", port), H)
+
+
 class H(SimpleHTTPRequestHandler):
     def __init__(self, *a, **k):
         super().__init__(*a, directory=UI, **k)
@@ -101,8 +156,9 @@ class H(SimpleHTTPRequestHandler):
 
     def _token_ok(self):
         if not SESSION_TOKEN:
-            return True
-        return self.headers.get("X-Studio-Token") == SESSION_TOKEN
+            return False
+        got = self.headers.get("X-Studio-Token") or ""
+        return hmac.compare_digest(got, SESSION_TOKEN)
 
     def _guard(self, mutating):
         if not self._host_ok():
@@ -125,7 +181,6 @@ class H(SimpleHTTPRequestHandler):
             start_s, _, end_s = spec.partition("-")
             try:
                 if start_s == "":
-                    # bytes=-N
                     length = int(end_s)
                     start = max(0, size - length)
                     end = size - 1
@@ -166,12 +221,16 @@ class H(SimpleHTTPRequestHandler):
         if not self._guard(False):
             return
         p = urlparse(self.path).path
+        audio = resolve_project_audio(p)
+        if audio is False:
+            return self.send_json({"error": "Pedido recusado."}, 403)
+        if audio:
+            return self.send_file_range(audio[0], audio[1])
         if p == "/api/state":
             if not P:
                 return self.send_json({"error": "Nenhum projeto aberto."}, 400)
             return self.send_json(state())
         if p == "/api/projects":
-            # stub até T15: lista vazia ou projetos em app_home
             root = app_home() / "projects"
             items = []
             if root.is_dir():
@@ -190,10 +249,9 @@ class H(SimpleHTTPRequestHandler):
             if not P:
                 return self.send_json({"text": ""})
             return self.send_json({"text": open(pj("voice", "ref.txt"), encoding="utf8").read().strip() if os.path.exists(pj("voice", "ref.txt")) else ""})
-        if p == "/voice/ref.wav" and P and os.path.exists(pj("voice", "ref.wav")):
-            return self.send_file_range(pj("voice", "ref.wav"), "audio/wav")
         if p == "/":
             self.path = "/setup.html"
+        # Arquivos estáticos só de ui/; SimpleHTTPRequestHandler já restringe ao directory=UI
         super().do_GET()
 
     def body(self):
@@ -206,14 +264,14 @@ class H(SimpleHTTPRequestHandler):
         if P:
             os.makedirs(pj("work"), exist_ok=True)
         try:
-            if p == "/api/book":      # corpo = bytes do .epub
+            if p == "/api/book":
                 if not P:
                     return self.send_json({"error": "Abra um projeto antes."}, 400)
                 open(pj("book.epub"), "wb").write(self.body())
                 r = subprocess.run([sys.executable, "-m", "studio.prepare_book", pj("book.epub"), pj("book.json")], cwd=os.path.dirname(HERE), capture_output=True, text=True)
                 if r.returncode: return self.send_json({"error": r.stderr[-400:]}, 400)
                 b = jload(pj("book.json")); return self.send_json({"title": b["title"], "author": b["author"], "chapters": len(b["chapters"]), "summary": r.stdout.strip()})
-            if p == "/api/voice":     # corpo = áudio (qualquer formato que o ffmpeg leia)
+            if p == "/api/voice":
                 if not P:
                     return self.send_json({"error": "Abra um projeto antes."}, 400)
                 os.makedirs(pj("voice"), exist_ok=True)
@@ -222,7 +280,7 @@ class H(SimpleHTTPRequestHandler):
                 r = subprocess.run([sys.executable, "-m", "studio.prepare_voice", pj("voice", "_upload"), "--project", P, "--lang", lang], cwd=os.path.dirname(HERE), capture_output=True, text=True)
                 if r.returncode: return self.send_json({"error": r.stderr[-400:]}, 400)
                 return self.send_json({"text": open(pj("voice", "ref.txt"), encoding="utf8").read().strip()})
-            if p == "/api/voice-text":  # o usuário corrige a transcrição
+            if p == "/api/voice-text":
                 if not P:
                     return self.send_json({"error": "Abra um projeto antes."}, 400)
                 open(pj("voice", "ref.txt"), "w", encoding="utf8").write(json.loads(self.body())["text"].strip() + "\n"); return self.send_json({"ok": True})
@@ -245,7 +303,8 @@ class H(SimpleHTTPRequestHandler):
                 if not P:
                     return self.send_json({"error": "Abra um projeto antes."}, 400)
                 spawn("assemble", [sys.executable, "-m", "studio.assemble", "--project", P], os.path.dirname(HERE)); return self.send_json({"ok": True})
-        except Exception as e:
+        except Exception:
+            log_exception()
             return self.send_json({"error": "Algo deu errado. Veja o log."}, 500)
         self.send_json({"error": "rota desconhecida"}, 404)
 
@@ -286,8 +345,8 @@ def main(argv=None):
         for d in ("work/chunks", "chapters", "voice"):
             os.makedirs(pj(d), exist_ok=True)
     print(f"http://127.0.0.1:{PORT}/  (projeto: {P or 'nenhum'}; app: {APP_NAME})", flush=True)
-    # Token só no stderr do processo pai via app.py; nunca imprima o token aqui.
-    ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
+    # Token nunca vai para stdout/stderr.
+    make_server(PORT).serve_forever()
 
 
 if __name__ == "__main__":

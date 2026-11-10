@@ -79,22 +79,22 @@ canvas { width: 100%; height: 70px; margin-top: 12px; }
 
   <div class="ai">Dica: tudo isso também funciona pelo Claude Code. Diga <code>/audiobook-studio faz o audiolivro de livro.epub com a minha voz em voz.m4a</code> e a IA executa cada passo; esta tela só mostra o que ela está fazendo.</div>
 </main>
+<script src="/studio.js"></script>
 <script>
 const $ = (i) => document.getElementById(i);
 let hasBook = false, hasVoice = false;
 const gate = () => { $("s2").classList.toggle("off", !hasBook); $("s3").classList.toggle("off", !(hasBook && hasVoice)); $("go").disabled = !(hasBook && hasVoice); };
-async function post(path, body, headers = {}) { const r = await fetch(path, { method: "POST", body, headers }); const j = await r.json(); if (!r.ok) throw new Error(j.error || "erro"); return j; }
 
 $("epub").onchange = async (e) => {
   const f = e.target.files[0]; if (!f) return; $("r1").className = "res"; $("r1").textContent = "Lendo o livro...";
-  try { const j = await post("/api/book", f); $("r1").textContent = `${j.title}, de ${j.author}. ${j.summary}.`; hasBook = true;
-    await post("/api/config", JSON.stringify({ livro: j.title, autor: j.author })); gate(); }
+  try { const j = await studio.post("/api/book", f); $("r1").textContent = `${j.title}, de ${j.author}. ${j.summary}.`; hasBook = true;
+    await studio.post("/api/config", JSON.stringify({ livro: j.title, autor: j.author })); gate(); }
   catch (er) { $("r1").className = "res err"; $("r1").textContent = er.message; }
 };
 
 async function sendVoice(blob) {
   $("r2").className = "res"; $("r2").textContent = "Recortando e transcrevendo (alguns segundos)...";
-  try { const j = await post("/api/voice", blob); $("vtxt").value = j.text; $("vbox").style.display = "block";
+  try { const j = await studio.post("/api/voice", blob); $("vtxt").value = j.text; $("vbox").style.display = "block";
     $("player").src = "/voice/ref.wav?" + Date.now(); $("r2").textContent = "Pronto. Ouça o recorte e confira a transcrição."; hasVoice = true; gate(); drawPeaks(); }
   catch (er) { $("r2").className = "res err"; $("r2").textContent = er.message; }
 }
@@ -107,16 +107,16 @@ $("rec").onclick = async () => {
     mr.start(); $("rec").textContent = "■ Parar"; setTimeout(() => mr.state === "recording" && mr.stop(), 30000); }
   catch (er) { $("r2").className = "res err"; $("r2").textContent = "Sem acesso ao microfone: " + er.message; }
 };
-$("saveTxt").onclick = async () => { await post("/api/voice-text", JSON.stringify({ text: $("vtxt").value })); $("r2").textContent = "Transcrição salva."; };
+$("saveTxt").onclick = async () => { await studio.post("/api/voice-text", JSON.stringify({ text: $("vtxt").value })); $("r2").textContent = "Transcrição salva."; };
 async function drawPeaks() {
-  const p = await (await fetch("/voice_peaks.json")).json(), c = $("wave"), x = c.getContext("2d"), r = c.getBoundingClientRect();
+  const p = await (await studio.fetch("/voice_peaks.json")).json(), c = $("wave"), x = c.getContext("2d"), r = c.getBoundingClientRect();
   c.width = r.width * 2; c.height = r.height * 2; x.fillStyle = "#35e6ff";
   p.forEach((v, i) => { const w = c.width / p.length, h = Math.max(4, v / .6 * c.height); x.fillRect(i * w + 1, (c.height - h) / 2, w - 2, h); });
 }
 $("go").onclick = async () => {
   const mode = document.querySelector("input[name=mode]:checked").value;
-  try { await post("/api/config", JSON.stringify({ voz: $("vname").value || "minha voz" })); await post("/api/start", JSON.stringify({ mode, gpu: "A100" }));
-    $("r3").textContent = "Gerando... abrindo o painel."; setTimeout(() => location.href = "/dashboard.html", 900); }
+  try { await studio.post("/api/config", JSON.stringify({ voz: $("vname").value || "minha voz" })); await studio.post("/api/start", JSON.stringify({ mode, gpu: "A100" }));
+    $("r3").textContent = "Gerando... abrindo o painel."; setTimeout(() => location.href = studio.href("/dashboard.html"), 900); }
   catch (er) { $("r3").className = "res err"; $("r3").textContent = er.message; }
 };
 </script>
