@@ -183,6 +183,10 @@ if [ -x "$EXE" ]; then
   st=${PIPESTATUS[0]}
   set -e
   echo "self-test exit=$st"
+  if [ "$st" -ne 0 ]; then
+    echo "build_mac: self-test falhou (exit=$st); .dmg em $DMG para diagnóstico" >&2
+    exit "$st"
+  fi
 else
   echo "build_mac: executável não encontrado em $EXE" >&2
   ls -la "$APP/Contents/MacOS" >&2 || true

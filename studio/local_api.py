@@ -381,8 +381,27 @@ def start_generate(pid: str, *, only: str = "", extra: dict | None = None) -> di
     if only:
         args.extend(["--only", only])
     cmd = worker_cmd("generate", args)
+    # Repassa HF_HOME do app ao filho (PATH limpo no R41; cache não pode sumir).
+    _hf_home_do_app()
+    env = os.environ.copy()
+    env["HF_HOME"] = str(app_home() / "hf")
+    env["HF_HUB_CACHE"] = str(app_home() / "hf" / "hub")
+    env["HUGGINGFACE_HUB_CACHE"] = env["HF_HUB_CACHE"]
+    # caffeinate fica em /usr/bin; garante PATH mínimo se o pai veio com PATH limpo.
+    path = env.get("PATH") or ""
+    for extra in ("/usr/bin", "/bin"):
+        if extra not in path.split(":"):
+            path = f"{path}:{extra}" if path else extra
+    env["PATH"] = path
     log = open(p / "work" / "generate.log", "ab")
-    proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=log, stderr=subprocess.STDOUT)
+    cwd = str(ROOT)
+    if getattr(__import__("sys"), "frozen", False):
+        try:
+            from studio.paths import resource_dir
+            cwd = str(resource_dir())
+        except Exception:
+            pass
+    proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=log, stderr=subprocess.STDOUT)
     job = {
         "pid": proc.pid,
         "status": "gerando",

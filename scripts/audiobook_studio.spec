@@ -42,7 +42,9 @@ hiddenimports = [
     "pocket_tts", "num2words", "webview",
 ]
 
-for pkg in ("pocket_tts", "webview", "num2words"):
+# scipy: o Pocket importa scipy.io.wavfile → sparse → array_api_compat.numpy.fft;
+# sem collect_all o .app quebra na geração com ModuleNotFoundError.
+for pkg in ("pocket_tts", "webview", "num2words", "scipy"):
     try:
         d, b, h = collect_all(pkg)
         datas += d
@@ -50,6 +52,16 @@ for pkg in ("pocket_tts", "webview", "num2words"):
         hiddenimports += h
     except Exception:
         pass
+try:
+    from PyInstaller.utils.hooks import collect_submodules
+    hiddenimports += collect_submodules("scipy._external")
+except Exception:
+    pass
+hiddenimports += [
+    "scipy._external.array_api_compat.numpy",
+    "scipy._external.array_api_compat.numpy.fft",
+    "scipy._external.array_api_compat.numpy.linalg",
+]
 
 a = Analysis(
     [str(RAIZ / "studio" / "boot.py")],

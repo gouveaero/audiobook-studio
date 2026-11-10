@@ -35,6 +35,18 @@ def test_build_mac_usa_codesign_adhoc_e_ffmpeg_lgpl():
     assert "buildconf" in BUILD_SH
 
 
+def test_build_mac_falha_se_self_test_falhar():
+    """O .dmg pode ficar em dist/, mas o script não pode sair 0 com self-test exit≠0."""
+    assert "self-test exit=" in BUILD_SH
+    assert re.search(r'\[ "\$st" -ne 0 \]', BUILD_SH) or 'st" -ne 0' in BUILD_SH
+    assert re.search(r'exit "\$st"|exit \$st', BUILD_SH)
+
+
+def test_spec_coleta_scipy_para_pocket():
+    assert "scipy" in SPEC
+    assert "array_api_compat" in SPEC or "collect_all" in SPEC
+
+
 def test_third_party_menciona_ffmpeg_embutido():
     tp = (RAIZ / "THIRD_PARTY.md").read_text(encoding="utf8")
     assert "ffmpeg" in tp.lower()

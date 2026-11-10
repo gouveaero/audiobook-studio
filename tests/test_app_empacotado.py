@@ -104,12 +104,19 @@ def test_self_test_janela_real(tmp_path):
     lines = [ln for ln in (r.stdout or "").splitlines() if ln.strip().startswith("{")]
     assert lines, f"sem JSON: out={r.stdout!r} err={r.stderr!r} code={r.returncode}"
     data = json.loads(lines[-1])
-    assert data.get("ok") is True or data.get("getUserMedia") == "presente", data
+    assert data.get("getUserMedia") == "presente", data
     assert data.get("audio_range") is True, data
-    # Guias 2/4/5/6 no autoteste ampliado
+    assert data.get("microphone_permission") is not None, data
+    assert data.get("ok") is True, data
     guias = data.get("guias") or {}
     for chave in ("guia2", "guia4", "guia5", "guia6"):
-        assert chave in guias or data.get(chave) is not None or "passos" in data, data
+        assert guias.get(chave) is True, data
+    # cada passo carrega o próprio detalhe (não copia o anterior)
+    passos = data.get("passos") or {}
+    assert "modelo_fake" in passos and "guia2_criar" in passos, data
+    d_modelo = (passos.get("modelo_fake") or {}).get("detalhe") or {}
+    d_criar = (passos.get("guia2_criar") or {}).get("detalhe") or {}
+    assert d_criar != d_modelo or d_criar.get("id"), data
 
 
 @pytest.mark.package
@@ -237,9 +244,36 @@ def test_livro_curto_ambiente_limpo(tmp_path):
             if final.get("status") in ("pronto", "concluido", "erro", "cancelado"):
                 break
             time.sleep(2)
-        assert final and final.get("status") in ("pronto", "concluido"), final
+
+        def _dump_falha(motivo: str):
+            linhas = [motivo, f"state={final!r}"]
+            job = (final or {}).get("job") or {}
+            if job.get("error"):
+                linhas.append(f"job.error={job.get('error')!r}")
+            if (final or {}).get("error"):
+                linhas.append(f"state.error={final.get('error')!r}")
+            gen_log = studio_home / "projects" / pid / "work" / "generate.log"
+            if gen_log.is_file():
+                texto = gen_log.read_text(encoding="utf8", errors="replace")
+                linhas.append("--- work/generate.log (fim) ---")
+                linhas.append(texto[-4000:])
+            srv_log = studio_home / "logs" / "server.log"
+            if srv_log.is_file():
+                texto = srv_log.read_text(encoding="utf8", errors="replace")
+                linhas.append("--- logs/server.log (fim) ---")
+                linhas.append(texto[-4000:])
+            job_path = studio_home / "projects" / pid / "work" / "job.json"
+            if job_path.is_file():
+                linhas.append("--- work/job.json ---")
+                linhas.append(job_path.read_text(encoding="utf8", errors="replace")[-2000:])
+            print("\n".join(linhas))
+            return "\n".join(linhas)
+
+        if not final or final.get("status") not in ("pronto", "concluido"):
+            pytest.fail(_dump_falha("geração não concluiu"))
         m4bs = list((studio_home / "projects" / pid / "audiobook").glob("*.m4b"))
-        assert m4bs, "sem M4B"
+        if not m4bs:
+            pytest.fail(_dump_falha("sem M4B após status pronto"))
         m4b = m4bs[0]
 
         # Capítulos e capa via ffprobe embutido (não o do PATH)
