@@ -188,11 +188,15 @@ true
 
 def _api(base: str, token: str, method: str, path: str, body: bytes | None = None, headers: dict | None = None):
     from urllib.parse import urlparse
+    parsed = urlparse(base)
+    # Só loopback: recusa qualquer outro host antes de abrir a conexão (R37).
+    if parsed.hostname != "127.0.0.1":
+        raise ValueError(f"selftest só fala com 127.0.0.1, recebeu {parsed.hostname!r}")
     h = dict(headers or {})
     if method not in ("GET", "HEAD"):
         h["X-Studio-Token"] = token
     # Host explícito: o servidor exige 127.0.0.1:<porta> (R33).
-    host = urlparse(base).netloc
+    host = parsed.netloc
     h.setdefault("Host", host)
     req = urllib.request.Request(f"{base}{path}", data=body, method=method, headers=h)
     try:

@@ -95,6 +95,7 @@ def test_chamadas_de_rede_so_nos_pontos_previstos():
         "studio/local_api.py",
         "studio/app.py",  # wait_up em 127.0.0.1
         "studio/server.py",  # só docstring/print local
+        "studio/selftest.py",  # só loopback
     }
     # cloud.py / publish_drive.py usam CLIs (colab, rclone), não URLs HTTP do app beta.
     problemas = []
