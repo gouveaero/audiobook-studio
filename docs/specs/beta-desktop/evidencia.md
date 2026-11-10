@@ -19,6 +19,7 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 | R51 | T9 | `tests/test_cloud.py` com `tests/fake_colab.py` via `VERIFY_LAYERS=base scripts/verify_beta.sh` | 5 passaram: envia `studio/engines/`, o necessário do motor do projeto e mantém as reservas. Não verificado: nuvem real (H5) |
 | R45 a R48 | T23 | `tests/test_licencas_sobre.py` via `VERIFY_LAYERS=base scripts/verify_beta.sh` | 8 passaram (180 na camada): LICENSE MIT sem e-mail, THIRD_PARTY com a apuração do OmniVoice (model card Apache 2.0, pacote 0.5.6 declara AGPL-3.0-only), tela Sobre com os termos, README com a liberação de abertura, botões de doação e Android só com endereço configurado. A origem exata do `ffmpeg` embutido fica para a T20 |
 | R33 no navegador | T19, guia 7 | `tests/ui/guias/07-seguranca.md`, executado pelo Testador no portal; captura conferida pelo Maestro | aprovado |
+| R44 | T22 | `tests/test_atualizacao.py` via `VERIFY_LAYERS=base scripts/verify_beta.sh` | 8 passaram (188 na camada): versão maior avisa, igual não avisa, sem rede e resposta inválida não causam erro; nenhum teste acessa a rede. Não verificado: consulta real às releases |
 
 ## Decisões de quem constrói
 
@@ -154,4 +155,12 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 - Commit: ef6976f (com alterações não commitadas)
 - Camadas pedidas: base
 - Camada `base`: passou. 180 passed, 6 deselected in 75.14s (0:01:15)
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 15:24
+- Commit: b0eacb5 (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 188 passed, 6 deselected in 69.42s (0:01:09)
 - Resultado: passou
