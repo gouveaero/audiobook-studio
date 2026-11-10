@@ -151,6 +151,8 @@ def test_review_api_book_tem_inicio_e_estimativa(api, casa):
 
 
 def test_erros_de_livro_em_portugues_na_api(api, tmp_path):
+    from studio import local_api as la
+    la.set_models_status(status="pronto", bytes=la.MODEL_TOTAL_BYTES, total_bytes=la.MODEL_TOTAL_BYTES, error=None)
     # DRM
     epub = tmp_path / "drm.epub"
     make_epub(

@@ -99,6 +99,11 @@ def list_projects() -> list[dict]:
 
 def create_project_from_epub(epub_bytes: bytes) -> dict:
     ensure_dirs()
+    if not modelo_pronto():
+        raise BookError(
+            "modelo",
+            "Baixe o modelo de voz antes de criar um audiolivro.",
+        )
     tmp = app_home() / "tmp"
     tmp.mkdir(parents=True, exist_ok=True)
     epub_path = tmp / f"upload-{int(time.time() * 1000)}.epub"
@@ -509,12 +514,42 @@ def baixar_embedding_voz(nome: str, on_progress=None) -> Path:
     return path
 
 
+def baixar_modelo_fake(on_progress) -> None:
+    """Download simulado para o Testador (AUDIOBOOK_FAKE_DOWNLOAD=1).
+
+    1ª tentativa: progresso parcial e falha de conexão.
+    2ª tentativa em diante: completa até o total.
+    """
+    ensure_dirs()
+    total = MODEL_TOTAL_BYTES
+    marker = app_home() / "models" / ".fake_download_attempt"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        n = int(marker.read_text(encoding="utf8").strip() or "0")
+    except (OSError, ValueError):
+        n = 0
+    n += 1
+    marker.write_text(str(n), encoding="utf8")
+    on_progress(0, total)
+    time.sleep(0.05)
+    on_progress(max(1, total // 5), total)
+    time.sleep(0.05)
+    if n <= 1:
+        raise ConnectionError("queda simulada")
+    on_progress(total // 2, total)
+    time.sleep(0.05)
+    on_progress(total, total)
+
+
 def baixar_modelo(on_progress) -> None:
     """Baixa pesos sem clonagem + embedding da voz de reserva só para hf/ do app.
 
     Ignora ~/.cache/huggingface e qualquer HF_HOME herdado. token=False: sem login.
     Depois disso o motor carrega offline com a voz de reserva (R22, R35).
+    Com AUDIOBOOK_FAKE_DOWNLOAD=1 usa baixar_modelo_fake (só testes / Testador).
     """
+    if os.environ.get("AUDIOBOOK_FAKE_DOWNLOAD", "").strip() in ("1", "true", "yes", "sim"):
+        return baixar_modelo_fake(on_progress)
     hf = _hf_home_do_app()
     hub = hf / "hub"
     try:
@@ -556,8 +591,13 @@ def baixar_modelo(on_progress) -> None:
 _download_lock = threading.Lock()
 
 
+def modelo_pronto() -> bool:
+    return get_models_status().get("status") == "pronto"
+
+
 def start_model_download(baixar=None) -> dict:
-    baixar = baixar or baixar_modelo
+    if baixar is None:
+        baixar = baixar_modelo
     cur = get_models_status()
     if cur.get("status") == "baixando":
         return cur

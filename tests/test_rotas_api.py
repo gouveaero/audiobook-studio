@@ -76,7 +76,13 @@ def file_sha(path: Path) -> str:
 
 # ---------- projetos / book ----------
 
+def _modelo_pronto():
+    from studio import local_api as la
+    la.set_models_status(status="pronto", bytes=la.MODEL_TOTAL_BYTES, total_bytes=la.MODEL_TOTAL_BYTES, error=None)
+
+
 def test_post_projects_cria_projeto_de_epub(api, casa, tmp_path):
+    _modelo_pronto()
     epub = tmp_path / "livro.epub"
     make_epub(epub, [("c1.xhtml", "<h1>1.</h1>" + paras(2))], toc=[("1.", "c1.xhtml")], title="Casa Nova")
     status, _, body = api.req("POST", "/api/projects", body=epub.read_bytes(), headers=auth(api))
@@ -87,6 +93,7 @@ def test_post_projects_cria_projeto_de_epub(api, casa, tmp_path):
 
 
 def test_post_projects_drm_devolve_code_sem_traceback(api, tmp_path):
+    _modelo_pronto()
     epub = tmp_path / "drm.epub"
     make_epub(
         epub, [("c1.xhtml", "<h1>1.</h1>" + paras(1))],
@@ -100,6 +107,7 @@ def test_post_projects_drm_devolve_code_sem_traceback(api, tmp_path):
 
 
 def test_put_book_respeita_include_e_titulo(api, casa, tmp_path):
+    _modelo_pronto()
     epub = tmp_path / "a.epub"
     make_epub(epub, [("c1.xhtml", "<h1>1.</h1>" + paras(2)), ("c2.xhtml", "<h1>2.</h1>" + paras(2))],
               toc=[("Um", "c1.xhtml"), ("Dois", "c2.xhtml")], title="Dois Caps")
