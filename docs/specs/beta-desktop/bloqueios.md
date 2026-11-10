@@ -39,3 +39,7 @@ Cada item traz o que travou, a opção escolhida para seguir e o que o dono prec
 - **Situação:** R29 pede o vídeo só quando a pessoa pedir. Antes, `studio assemble` gerava o MP4 sempre.
 - **Opção escolhida para seguir:** vídeo só com `--video`. Isso muda o fluxo atual da skill, que passa a precisar pedir o vídeo.
 - **Para o dono decidir:** se a skill deve pedir o vídeo por padrão.
+
+### B9. Mensagens da geração (T8)
+- **Opção escolhida para seguir:** falta de espaço: "Sem espaço em disco: a geração precisa de cerca de N MB livres e há M MB. Libere espaço e tente de novo." Erro: "A geração falhou (Tipo). O detalhe está em work/generate.log."
+- **Para o dono decidir:** se os textos servem. A segunda cita um nome técnico e um arquivo; o Testador vai avaliar no guia 8.

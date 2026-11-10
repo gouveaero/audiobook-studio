@@ -14,6 +14,9 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 | R22 (voz padrão sem login) | T2 | `tests/test_voz_padrao.py` (`@pytest.mark.model`), rodado pelo Maestro com o Pocket real, sozinho na máquina | 2 passaram em 77 s: com `HF_HOME` vazio e sem token, a voz exportada de `portuguese_24l` falou, a voz pronta também, clonar foi recusado com mensagem em português e nenhum token apareceu na saída |
 | R27 a R29, R9 e R50 na montagem | T13 | `tests/test_assemble.py` via `VERIFY_LAYERS=base scripts/verify_beta.sh` | 6 passaram (91 na camada): metadados, capa, capítulos e durações por `ffprobe`, capítulo tirado fica fora, renomeado aparece, vídeo só se pedido, projeto antigo monta. Não verificado: a tela final dizer que é IA (T18) e a chamada automática ao fim da geração (T8) |
 | R33, R34, R30 (Range) | T14 | `tests/test_servidor_base.py` via `VERIFY_LAYERS=base scripts/verify_beta.sh` | 21 passaram: 403 sem token e com `Host` errado em POST, PUT e DELETE, token fechado por padrão, GET nunca devolve o token, servidor só em 127.0.0.1 (inclusive como processo real), `Range` em todo áudio, log de erro sem token. Não verificado: janela pywebview |
+| R13, R9 na geração | T7 | `tests/test_retomada.py` via `VERIFY_LAYERS=base scripts/verify_beta.sh` | 8 passaram (172 na camada): processo morto com SIGKILL no meio retoma só o que faltava, trava velha liberada, trava vazia da nuvem respeitada, `.wav` ilegível refeito, capítulo tirado não é gerado. Não verificado: retomada com o Pocket real |
+| R14 a R18 | T8 | `tests/test_tarefa.py` via `VERIFY_LAYERS=base scripts/verify_beta.sh` | 11 passaram: pausar, continuar, cancelar sem apagar o pronto, `caffeinate` só durante a geração, aviso de espaço antes de começar, tempo restante pela velocidade medida, montagem no fim. R15 (fechar e reabrir a janela) fica para o guia 5 do Testador. Não verificado: espaço e `caffeinate` no app empacotado |
+| R51 | T9 | `tests/test_cloud.py` com `tests/fake_colab.py` via `VERIFY_LAYERS=base scripts/verify_beta.sh` | 5 passaram: envia `studio/engines/`, o necessário do motor do projeto e mantém as reservas. Não verificado: nuvem real (H5) |
 
 ## Decisões de quem constrói
 
@@ -25,6 +28,9 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 - **T2:** o teste baixa os pesos sem clonagem (672 MB) num `HF_HOME` vazio a cada execução; `HF_HOME_SEM_LOGIN` permite reaproveitar um cache sem token.
 - **T13:** entrada da montagem: `studio.assemble.montar_projeto(pasta, video=False)`. A montagem padrão deixou de gerar MP4 (R29); o teste de R7 que esperava o MP4 foi ajustado para esperar que ele não exista. Narrador nos metadados vem de `config.json`.
 - **T14:** as páginas leem o token da abertura, guardam em `sessionStorage` e enviam em toda escrita por `ui/studio.js`; log de erros em `logs/server.log` na pasta do app.
+- **T8:** estados em `work/job.json`: gerando, pausado, cancelado, montando, pronto, erro e concluido (tarefa que acaba sem o livro inteiro). Pausa e cancelamento lidos entre pedaços.
+- **T9:** a geração na VM roda com `--no-assemble`; a montagem continua no computador.
+- **T7:** um teste do próprio Motor (`test_capitulo_com_include_false_nao_e_gerado`) foi reescrito na T9 para contar só eventos `done` do `progress.jsonl` e passou a exigir que nenhum evento do capítulo tirado apareça.
 
 ## Execuções
 
@@ -82,4 +88,60 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 - Commit: 17b944e (com alterações não commitadas)
 - Camadas pedidas: base
 - Camada `base`: passou. 91 passed, 2 deselected in 21.81s
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 14:16
+- Commit: e848d80 (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 103 passed, 2 deselected in 46.00s
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 14:23
+- Commit: e58ab03 (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 106 passed, 3 deselected, 1 xfailed in 33.23s
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 14:29
+- Commit: 9a974b6 (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 115 passed, 3 deselected, 1 xfailed in 54.14s
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 14:40
+- Commit: b1478c5 (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: FALHOU (código 1). 2 failed, 151 passed, 6 deselected in 97.51s (0:01:37)
+- Resultado: FALHOU
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 14:51
+- Commit: 7df57e1 (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: FALHOU (código 1). 2 failed, 157 passed, 6 deselected in 204.27s (0:03:24)
+- Resultado: FALHOU
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 14:55
+- Commit: e3924c9 (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 165 passed, 6 deselected in 133.62s (0:02:13)
+- Resultado: passou
+
+## Execução do verify_beta.sh
+
+- Data: 2026-11-10 14:57
+- Commit: 17bcb05 (com alterações não commitadas)
+- Camadas pedidas: base
+- Camada `base`: passou. 172 passed, 6 deselected in 143.40s (0:02:23)
 - Resultado: passou
