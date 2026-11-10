@@ -2,6 +2,7 @@
 
 Valores de design.md, seção Áudio. Não gera voz de novo: só processa os WAV em cache.
 """
+import json
 import os
 import re
 import subprocess
@@ -22,6 +23,8 @@ EQ_FILTER = (
     "equalizer=f=3500:width_type=o:w=1.5:g=2"
 )
 LIMITER_FILTER = "alimiter=limit=0.7:level=false:attack=5:release=80"
+EQ_GRAVES_HZ = 350.0
+EQ_GRAVES_FRACAO = 0.60
 
 
 def _run(cmd):
@@ -63,7 +66,6 @@ def medir_lufs(samples, sr):
         )
         m = re.search(r"I:\s*([-\d.]+)\s*LUFS", r.stderr)
         if not m:
-            # silêncio total ou áudio curto demais: ebur128 pode não reportar
             return None
         return float(m.group(1))
 
@@ -71,12 +73,8 @@ def medir_lufs(samples, sr):
 def normalizar_volume(samples, sr):
     """Ganho fixo até -21 LUFS, depois alimiter (sem compressor)."""
     lufs = medir_lufs(samples, sr)
-    if lufs is None:
-        gain = 0.0
-    else:
-        gain = TARGET_LUFS - lufs
-    filt = f"volume={gain}dB,{LIMITER_FILTER}"
-    return _ffmpeg_filter(samples, sr, filt)
+    gain = 0.0 if lufs is None else TARGET_LUFS - lufs
+    return _ffmpeg_filter(samples, sr, f"volume={gain}dB,{LIMITER_FILTER}")
 
 
 def tratar(samples, sr, *, eq=False):
@@ -85,21 +83,47 @@ def tratar(samples, sr, *, eq=False):
     return normalizar_volume(samples, sr)
 
 
-def montar_capitulo(chunks, pauses, head, sr, *, eq=False, prev_trailing=0.0):
+def pausa_final_do_capitulo(cap):
+    """Silêncio no fim do capítulo montado, segundo o book.json (para a próxima virada)."""
+    pauses = cap.get("pauses") or []
+    if not pauses:
+        return 0.0
+    last = len(pauses) - 1
+    if last in set(cap.get("head") or []):
+        return SILENCE_AFTER_TITLE
+    return float(pauses[last])
+
+
+def silencio_antes_do_titulo(chapters, idx):
+    """Silêncio a colocar antes do título, só a partir do book.json (R20).
+
+    Total desejado: 1,5 s, somando a pausa final do capítulo anterior incluído.
+    Capítulos com include false são ignorados. Sem head: sem virada (0).
+    """
+    cap = chapters[idx]
+    if not (cap.get("head") or []):
+        return 0.0
+    trailing = 0.0
+    for i in range(idx - 1, -1, -1):
+        prev = chapters[i]
+        if prev.get("include", True):
+            trailing = pausa_final_do_capitulo(prev)
+            break
+    return max(0.0, SILENCE_BEFORE_TITLE - trailing)
+
+
+def montar_capitulo(chunks, pauses, head, sr, *, eq=False, silencio_antes=0.0):
     """Junta os trechos de um capítulo com virada, EQ e volume.
 
-    `chunks` é lista de arrays float32. `head` é o conjunto/lista de índices de título.
-    Devolve (amostras, silêncio_final_em_segundos) para a virada do próximo capítulo.
-    Projetos sem head não recebem tratamento de título (R50).
+    `silencio_antes` deve vir de `silencio_antes_do_titulo` (book.json), não do estado
+    da execução. Devolve (amostras, silêncio_final_em_segundos).
     """
     heads = set(head or [])
     parts = []
     trailing = 0.0
 
-    if heads:
-        lead = max(0.0, SILENCE_BEFORE_TITLE - float(prev_trailing or 0.0))
-        if lead > 0:
-            parts.append(np.zeros(int(round(sr * lead)), dtype=np.float32))
+    if heads and silencio_antes > 0:
+        parts.append(np.zeros(int(round(sr * float(silencio_antes))), dtype=np.float32))
 
     for i, w in enumerate(chunks):
         w = np.asarray(w, dtype=np.float32).reshape(-1)
@@ -107,16 +131,11 @@ def montar_capitulo(chunks, pauses, head, sr, *, eq=False, prev_trailing=0.0):
             w = aplicar_titulo(w, sr)
         parts.append(w)
         if i < len(chunks) - 1:
-            if i in heads:
-                pz = SILENCE_AFTER_TITLE
-            else:
-                pz = float(pauses[i]) if i < len(pauses) else 0.7
+            pz = SILENCE_AFTER_TITLE if i in heads else float(pauses[i]) if i < len(pauses) else 0.7
             parts.append(np.zeros(int(round(sr * pz)), dtype=np.float32))
             trailing = 0.0
         else:
-            # último trecho: a pausa do livro vira o "fim do capítulo" da próxima virada
             if i in heads:
-                # capítulo só com título: depois dele ainda vale o silêncio pós-título
                 pz = SILENCE_AFTER_TITLE
                 parts.append(np.zeros(int(round(sr * pz)), dtype=np.float32))
                 trailing = pz
@@ -128,17 +147,37 @@ def montar_capitulo(chunks, pauses, head, sr, *, eq=False, prev_trailing=0.0):
 
     if not parts:
         return np.zeros(0, dtype=np.float32), 0.0
+    return tratar(np.concatenate(parts), sr, eq=eq), trailing
 
-    joined = np.concatenate(parts)
-    return tratar(joined, sr, eq=eq), trailing
+
+def eq_por_graves(ref_wav, limiar_hz=EQ_GRAVES_HZ, fracao=EQ_GRAVES_FRACAO):
+    """True se mais de `fracao` da energia do WAV de referência está abaixo de `limiar_hz`.
+
+    Regra de design.md para voz clonada; a Interface grava o resultado em manifest.json.
+    """
+    samples, sr = read_wav(ref_wav)
+    samples = np.asarray(samples, dtype=np.float32).reshape(-1)
+    if len(samples) < 2:
+        return False
+    espec = np.fft.rfft(samples)
+    pot = (espec.real ** 2 + espec.imag ** 2)
+    freqs = np.fft.rfftfreq(len(samples), d=1.0 / sr)
+    total = float(pot.sum())
+    if total <= 0:
+        return False
+    graves = float(pot[freqs < limiar_hz].sum())
+    return (graves / total) > fracao
 
 
 def eq_do_projeto(P):
-    """EQ ligado pelo manifest da voz ou por config.json (`"eq": true`)."""
+    """Lê a decisão já gravada: voice/manifest.json do projeto ou config.json.
+
+    A pasta de vozes do app (voices/<id>/manifest.json) é cuidada pela Interface (T17);
+    no projeto, o manifest da voz usada fica em voice/manifest.json quando existir.
+    """
     for rel in ("voice/manifest.json", "config.json"):
         path = os.path.join(P, rel)
         try:
-            import json
             cfg = json.load(open(path, encoding="utf8"))
         except (OSError, ValueError):
             continue

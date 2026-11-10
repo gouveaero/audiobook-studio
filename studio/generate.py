@@ -20,7 +20,7 @@ import argparse, json, os, subprocess, sys, time, warnings
 
 import numpy as np
 
-from studio.audio import eq_do_projeto, montar_capitulo
+from studio.audio import eq_do_projeto, montar_capitulo, silencio_antes_do_titulo
 from studio.engines import engine_name, load_engine
 from studio.wavio import read_wav, write_wav
 
@@ -133,7 +133,8 @@ def main(argv=None):
 
     t0 = time.time()
     usar_eq = eq_do_projeto(P)
-    prev_trailing = 0.0
+    livro = book["chapters"]
+    por_id = {c["id"]: i for i, c in enumerate(livro)}
     for c in chapters:
         if not claim(c):
             continue
@@ -149,8 +150,9 @@ def main(argv=None):
                     flagged.append(k)
             w, wsr = read_wav(f)
             parts.append(w)
-        audio, prev_trailing = montar_capitulo(
-            parts, c["pauses"], c.get("head") or [], wsr, eq=usar_eq, prev_trailing=prev_trailing,
+        lead = silencio_antes_do_titulo(livro, por_id[c["id"]])
+        audio, _ = montar_capitulo(
+            parts, c["pauses"], c.get("head") or [], wsr, eq=usar_eq, silencio_antes=lead,
         )
         wav, tmp, out = f"{P}/work/{c['id']}.{os.getpid()}.wav", f"{P}/chapters/{c['id']}.{os.getpid()}.tmp.m4a", f"{P}/chapters/{c['id']}.m4a"
         write_wav(wav, audio, wsr)
