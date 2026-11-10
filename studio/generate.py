@@ -11,7 +11,7 @@ Estrutura do projeto:
   work/locks/NN             trava de capítulo com o PID, para vários processos dividirem a fila (trava vazia: reserva da nuvem;
                             trava de processo morto é liberada na retomada)
   chapters/NN.m4a           saída; só aparece com o arquivo completo (escrita em .tmp e renomeada)
-  work/progress.jsonl       eventos: retry, done, flagged
+  work/progress.jsonl       eventos: piece (ritmo de cada pedaço gerado), retry, done (com flagged)
   work/job.json             a tarefa: pid, status (gerando, pausado, cancelado, montando, pronto, concluido, erro), motor,
                             model, started, chars_total, chars_done, chars_per_second (medida), eta_seconds, error, m4b
   work/pause, work/cancel   pedidos da interface, lidos entre pedaços; cancelar não apaga o que está pronto
@@ -97,9 +97,39 @@ def engine_name_for(P):
 
 
 def voice_for(P, book):
-    ref_txt = f"{P}/voice/ref.txt"
-    return {"ref_wav": f"{P}/voice/ref.wav", "language": book.get("language", "pt"),
-            "ref_txt": open(ref_txt, encoding="utf8").read().strip() if os.path.exists(ref_txt) else ""}
+    """Voz do projeto. Com voice/manifest.json (app): model, file (resolvido para o pacote, a pasta do projeto ou
+    voices/<id>/ do app), name (voz pronta) ou eq. Sem manifesto (projetos antigos): ref.wav e ref.txt do OmniVoice."""
+    ref_txt, ref_wav = f"{P}/voice/ref.txt", f"{P}/voice/ref.wav"
+    voice = {"language": book.get("language", "pt"),
+             "ref_txt": open(ref_txt, encoding="utf8").read().strip() if os.path.exists(ref_txt) else ""}
+    if os.path.exists(ref_wav):
+        voice["ref_wav"] = ref_wav
+    manifesto = f"{P}/voice/manifest.json"
+    if not os.path.exists(manifesto):
+        return voice
+    man = json.load(open(manifesto, encoding="utf8"))
+    voice["model"] = man.get("model") or "portuguese_24l"
+    if "eq" in man:
+        voice["eq"] = bool(man["eq"])
+    if man.get("file"):
+        from studio.brand import app_home
+        candidatos = [f"{P}/voice"]
+        if os.environ.get("VOICE_PACK_DIR"):
+            candidatos.append(os.environ["VOICE_PACK_DIR"])
+        candidatos.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "build", "voice-pack"))
+        if man.get("id"):
+            candidatos.append(str(app_home() / "voices" / man["id"]))
+        for d in candidatos:
+            if os.path.isfile(os.path.join(d, man["file"])):
+                voice["file"] = os.path.join(d, man["file"]); break
+        else:
+            raise FileNotFoundError(f"A voz {man.get('label') or man.get('id') or ''} não foi encontrada ({man['file']}).")
+    elif man.get("name"):
+        voice["name"] = man["name"]
+    elif "ref_wav" not in voice:
+        from studio.brand import VOICE_FALLBACK
+        voice["name"] = VOICE_FALLBACK
+    return voice
 
 
 def espaco_necessario(chars, chars_per_second):
@@ -265,7 +295,7 @@ def rodar(P, a, book, chapters, motor, device, tarefa, total, estado):
                 os.remove(estado["trava"])
             raise Cancelado()
 
-    def synth(text):
+    def synth(text, c=None, k=None, s=0):
         t0 = time.time()
         for attempt in range(MAX_ATTEMPTS):
             w = np.asarray(engine.synth(text, attempt), dtype=np.float32).reshape(-1)
@@ -275,6 +305,8 @@ def rodar(P, a, book, chapters, motor, device, tarefa, total, estado):
         else:
             attempt = -1
         medida["chars"] += len(text); medida["secs"] += time.time() - t0
+        if c is not None:  # dados de ritmo por pedaço, para calibrar rate_range e para o painel
+            log(kind="piece", ch=c["id"], k=k, s=s, chars=len(text), secs=round(len(w) / sr, 3), rate=round(rate, 2), attempt=attempt)
         return w, rate, attempt
 
     def synth_chunk(c, k, txt):
@@ -282,7 +314,7 @@ def rodar(P, a, book, chapters, motor, device, tarefa, total, estado):
         f = f"{P}/work/chunks/{c['id']}_{k:04d}.wav"
         pieces = engine.split(txt)
         if len(pieces) == 1:
-            w, rate, att = synth(txt)
+            w, rate, att = synth(txt, c, k, 0)
             write_wav_atomic(f, w, sr)
             return rate, att
         parts, worst = [], (None, 0)
@@ -291,7 +323,7 @@ def rodar(P, a, book, chapters, motor, device, tarefa, total, estado):
             lido = read_wav_ou_descarta(pf) if os.path.exists(pf) else None
             if lido is None:
                 controle()
-                w, rate, att = synth(piece)
+                w, rate, att = synth(piece, c, k, s)
                 write_wav_atomic(pf, w, sr)
                 if att != 0 and (worst[0] is None or att == -1 or (worst[1] != -1 and att > worst[1])):
                     worst = (rate, att)
