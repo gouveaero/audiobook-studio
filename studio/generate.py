@@ -8,7 +8,8 @@ Estrutura do projeto:
   voice/ref.wav        referência de 3 a 15 s     voice/ref.txt  transcrição exata dela     (studio.prepare_voice)
   work/chunks/NN_KKKK.wav   cache por trecho (retomável; apagar o arquivo refaz o trecho)
   work/chunks/NN_KKKK.pSS.wav  pedaços de um trecho, quando o motor corta o trecho (Pocket); somem no trecho pronto
-  work/locks/NN             trava de capítulo, para vários processos dividirem a fila
+  work/locks/NN             trava de capítulo com o PID, para vários processos dividirem a fila (trava vazia: reserva da nuvem;
+                            trava de processo morto é liberada na retomada)
   chapters/NN.m4a           saída; só aparece com o arquivo completo (escrita em .tmp e renomeada)
   work/progress.jsonl       eventos: retry, done, flagged
 
@@ -27,6 +28,50 @@ from studio.wavio import read_wav, write_wav
 PIECE_PAUSE = 0.25   # segundos entre pedaços de um mesmo trecho
 MIN_CHECK_CHARS = 60  # pedaços mais curtos não têm o ritmo conferido
 MAX_ATTEMPTS = 4
+
+
+def write_wav_atomic(path, samples, sr):
+    """Escreve em .tmp e renomeia: um .wav com o nome final é sempre íntegro (R13)."""
+    tmp = f"{path}.{os.getpid()}.tmp"
+    write_wav(tmp, samples, sr)
+    os.replace(tmp, path)
+
+
+def read_wav_ou_descarta(path):
+    """Lê um .wav do cache; se estiver ilegível (processo morto no meio da escrita), apaga e devolve None."""
+    try:
+        w, sr = read_wav(path)
+        if len(w) == 0:
+            raise ValueError("vazio")
+        return w, sr
+    except Exception:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return None
+
+
+def processo_vivo(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def trava_livre(path):
+    """Trava de capítulo: vazia (reserva da nuvem) ou de processo vivo continua valendo; de processo morto é liberada."""
+    try:
+        conteudo = open(path).read().strip()
+    except OSError:
+        return True
+    if not conteudo or not conteudo.isdigit() or processo_vivo(int(conteudo)):
+        return False
+    os.remove(path)
+    return True
 
 
 def pick_device(name):
@@ -66,7 +111,7 @@ def main(argv=None):
     for d in ("work/chunks", "work/locks", "chapters"):
         os.makedirs(f"{P}/{d}", exist_ok=True)
     book = json.load(open(f"{P}/book.json"))
-    chapters = book["chapters"]
+    chapters = [c for c in book["chapters"] if c.get("include", True)]
     if a.only:
         keep = set(a.only.split(","))
         chapters = [c for c in chapters if c["id"] in keep]
@@ -105,19 +150,20 @@ def main(argv=None):
         pieces = engine.split(txt)
         if len(pieces) == 1:
             w, rate, att = synth(txt)
-            write_wav(f, w, sr)
+            write_wav_atomic(f, w, sr)
             return rate, att
         parts, worst = [], (None, 0)
         for s, piece in enumerate(pieces):
             pf = f"{P}/work/chunks/{c['id']}_{k:04d}.p{s:02d}.wav"
-            if not os.path.exists(pf):
+            lido = read_wav_ou_descarta(pf) if os.path.exists(pf) else None
+            if lido is None:
                 w, rate, att = synth(piece)
-                write_wav(pf, w, sr)
+                write_wav_atomic(pf, w, sr)
                 if att != 0 and (worst[0] is None or att == -1 or (worst[1] != -1 and att > worst[1])):
                     worst = (rate, att)
-            w, _ = read_wav(pf)
-            parts += [w, np.zeros(int(sr * PIECE_PAUSE), dtype=np.float32)]
-        write_wav(f, np.concatenate(parts[:-1]), sr)
+                lido = (w, sr)
+            parts += [lido[0], np.zeros(int(sr * PIECE_PAUSE), dtype=np.float32)]
+        write_wav_atomic(f, np.concatenate(parts[:-1]), sr)
         for s in range(len(pieces)):
             os.remove(f"{P}/work/chunks/{c['id']}_{k:04d}.p{s:02d}.wav")
         return worst
@@ -125,11 +171,19 @@ def main(argv=None):
     def claim(c):
         if os.path.exists(f"{P}/chapters/{c['id']}.m4a"):
             return False
+        lock = f"{P}/work/locks/{c['id']}"
+        if os.path.exists(lock) and not trava_livre(lock):
+            return False
         try:
-            os.close(os.open(f"{P}/work/locks/{c['id']}", os.O_CREAT | os.O_EXCL | os.O_WRONLY))
-            return True
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         except FileExistsError:
             return False
+        with os.fdopen(fd, "w") as fh:
+            fh.write(str(os.getpid()))
+        for velho in os.listdir(f"{P}/work/chunks"):  # .tmp de um processo morto neste capítulo
+            if velho.startswith(f"{c['id']}_") and velho.endswith(".tmp"):
+                os.remove(f"{P}/work/chunks/{velho}")
+        return True
 
     t0 = time.time()
     usar_eq = eq_do_projeto(P)
@@ -142,20 +196,22 @@ def main(argv=None):
         wsr = sr
         for k, (txt, pz) in enumerate(zip(c["chunks"], c["pauses"])):
             f = f"{P}/work/chunks/{c['id']}_{k:04d}.wav"
-            if not os.path.exists(f):
+            lido = read_wav_ou_descarta(f) if os.path.exists(f) else None
+            if lido is None:
                 rate, att = synth_chunk(c, k, txt)
                 if att != 0:
                     log(kind="retry", ch=c["id"], k=k, rate=round(rate, 1), attempt=att)
                 if att == -1:
                     flagged.append(k)
-            w, wsr = read_wav(f)
+                lido = read_wav(f)
+            w, wsr = lido
             parts.append(w)
         lead = silencio_antes_do_titulo(livro, por_id[c["id"]])
         audio, _ = montar_capitulo(
             parts, c["pauses"], c.get("head") or [], wsr, eq=usar_eq, silencio_antes=lead,
         )
         wav, tmp, out = f"{P}/work/{c['id']}.{os.getpid()}.wav", f"{P}/chapters/{c['id']}.{os.getpid()}.tmp.m4a", f"{P}/chapters/{c['id']}.m4a"
-        write_wav(wav, audio, wsr)
+        write_wav_atomic(wav, audio, wsr)
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", wav, "-ac", "1", "-b:a", "64k", tmp], check=True)
         os.remove(wav)
         os.rename(tmp, out)  # só existe como NN.m4a quando está completo
