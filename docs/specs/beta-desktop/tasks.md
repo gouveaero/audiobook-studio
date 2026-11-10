@@ -26,7 +26,7 @@ Marcação de testes: sem marca, rodam sem modelo e em segundos (motor falso, EP
 
 ## Áudio
 
-- [ ] **T12.** Virada de capítulo, EQ e volume ao juntar os trechos. (R19 a R21)
+- [x] **T12.** Virada de capítulo, EQ e volume ao juntar os trechos. (R19 a R21)
 - [ ] **T13.** Montagem automática, vídeo opcional e metadados de IA. (R27 a R29)
 
 ## Servidor e telas
