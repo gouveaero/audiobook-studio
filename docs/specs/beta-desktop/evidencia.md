@@ -30,6 +30,9 @@ Cada linha só entra depois de o teste ter sido rodado pelo Maestro na `beta-des
 | R9, R26, R31, R36, R38 | T15 | `tests/test_rotas_api.py` via camada base, mais `test_models_download_real_e_motor_offline` (`@pytest.mark.model`) rodado pelo Maestro; guias 1, 2, 3 e 6 | passaram. Download real de cerca de 697 MB só para a pasta `hf/` do app, com progresso; depois o motor carrega e fala com `HF_HUB_OFFLINE=1` e sem token |
 | R22 a R26 | T17 | `tests/test_voz_tela.py` via camada base, mais `test_r23_ouvir_voz_pronta_com_pocket_real` (`@pytest.mark.model`) rodado pelo Maestro; guia 4 | passaram. Não verificado: gravação pelo microfone na janela (H6) e clonagem real com login |
 | Camada de modelo inteira | T2, T3, T5, T6, T15, T17 | `pytest -m model`, rodado pelo Maestro sozinho na máquina | 6 passaram e 1 falhou (R11, T6) em 28 min 53 s |
+| R37, R49 | T24 | `tests/test_rede.py` e `tests/test_privacidade.py` na camada base, e `test_pacote_app_sem_dados_pessoais` (`@pytest.mark.package`) rodado pelo Maestro no app construído de um clone limpo | passaram: só Hugging Face, GitHub Releases e os endereços opcionais de `brand.py` como destinos; chamadas de rede só nos pontos previstos; nenhum termo proibido nos arquivos, nos commits novos nem dentro do `.app` |
+| R40, R42 | T20 (sem marcar) | `scripts/build_mac.sh` rodado pelo Maestro num clone limpo da `beta-desktop` | gerou o `.dmg`: 318.734.663 bytes (0,297 GB), abaixo de 1,5 GB. `ffmpeg` 8.1.2 LGPL com SHA-256 conferida, ícone, assinatura ad hoc, pacote de voz incluído, modelo fora |
+| R41, R43 | T20, T21 (sem marcar) | `pytest -m package` rodado pelo Maestro no app do clone limpo | 2 passaram (`NSMicrophoneUsageDescription`; dados pessoais no pacote) e **2 falharam**: o autoteste da janela real para em "falha ao criar projeto", e a geração do livro curto em ambiente limpo termina em erro depois de o download real passar. Devolvido à Interface |
 
 ## Decisões de quem constrói
 

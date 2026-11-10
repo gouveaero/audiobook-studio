@@ -54,6 +54,11 @@ Cada item traz o que travou, a opção escolhida para seguir e o que o dono prec
 - **Opção escolhida para seguir:** vale a medição feita na mesma execução do teste, como R11 define. O teste registra os dois números.
 - **Para o dono decidir:** se R11 deve usar a média de várias medições, já que a variação do Whisper é da mesma ordem que a margem de 0,5 ponto (32 palavras).
 
+### B13. O ffmpeg embutido vem de um repositório não oficial (T20, R45)
+- **Situação:** não há build oficial do `ffmpeg` LGPL para Mac com chip Apple. O instalador usa o FFmpeg 8.1.2 LGPL publicado em `github.com/livefantasia/ffmpeg-macos-build`, um repositório de terceiros.
+- **Opção escolhida para seguir:** o `build_mac.sh` fixa a SHA-256 do arquivo e aborta se ela mudar, e confere que o binário não foi compilado com partes GPL ou não livres. Com isso o item B10 deixa de ter binário GPL no instalador.
+- **Para o dono decidir:** antes de publicar, se aceita essa origem ou se prefere compilar o `ffmpeg` a partir do código oficial, o que exige ferramentas de compilação na máquina de build.
+
 ## Bloqueio que impede o resultado "completo"
 
 ### B12. R11 não passou depois de ajustar o corte (T6 sem marcar)
