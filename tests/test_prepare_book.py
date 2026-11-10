@@ -250,7 +250,7 @@ def test_r7_sem_capa_gera_capa_e_montagem_funciona(tmp_path):
     for c in book["chapters"]:
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=f=220:d=1", "-ac", "1",
                         "-b:a", "64k", str(proj / "chapters" / f"{c['id']}.m4a")], check=True)
-    r = subprocess.run([sys.executable, "studio/assemble.py", "--project", str(proj)], cwd=ROOT,
+    r = subprocess.run([sys.executable, "-m", "studio.assemble", "--project", str(proj)], cwd=ROOT,
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stderr + r.stdout
     m4b = proj / "audiobook" / "Livro de Teste.m4b"
@@ -258,7 +258,8 @@ def test_r7_sem_capa_gera_capa_e_montagem_funciona(tmp_path):
                             "-of", "json", str(m4b)], capture_output=True, text=True)
     assert any(s["codec_type"] == "video" and s["disposition"]["attached_pic"] == 1
                for s in json.loads(probe.stdout)["streams"])
-    assert (proj / "audiobook" / "Livro de Teste.mp4").exists()
+    # R29: vídeo só se pedido; a montagem padrão gera só o M4B com a capa embutida
+    assert not (proj / "audiobook" / "Livro de Teste.mp4").exists()
 
 
 # R8 ---------------------------------------------------------------------------------------------------------------
