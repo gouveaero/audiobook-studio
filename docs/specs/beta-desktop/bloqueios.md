@@ -62,7 +62,7 @@ Cada item traz o que travou, a opção escolhida para seguir e o que o dono prec
 ### B14. "Salvar M4B" copia para a pasta Downloads, sem perguntar onde (T18, T19, R32)
 - **Situação:** na janela do app, o botão dizia "M4B salvo" sem gravar arquivo nenhum, porque a janela não aceita download iniciado pela página. O defeito apareceu na conferência da T19; o autoteste da janela não clicava no botão.
 - **Opção escolhida para seguir:** o botão copia o M4B para a pasta Downloads da pessoa e a tela só confirma depois de o arquivo existir. Se já houver um arquivo com o mesmo nome, o novo recebe " 2", " 3" no fim. "Mostrar no Finder" mostra o arquivo salvo. O autoteste agora clica no botão e confere o arquivo no disco.
-- **Para o dono decidir:** se prefere uma janela para escolher a pasta, em vez de salvar sempre em Downloads.
+- **Decidido em 10/11/2026:** o dono deixou a escolha com o Maestro. Fica como está: salvar sempre em Downloads, que é o caminho mais simples para quem não é técnico. Uma janela para escolher a pasta pode entrar numa versão futura.
 
 ## Bloqueio que impede o resultado "completo"
 
