@@ -14,12 +14,16 @@ Passos:
 
 Capturas:
 - Passo 1: `tests/ui/capturas/01-primeiro-uso-home.png`
+- Passo 2: `tests/ui/capturas/01-primeiro-uso-progresso.png`
+- Passo 3: `tests/ui/capturas/01-primeiro-uso-erro.png`
 
 Critério de aprovação:
 - A interface exibe o tamanho do modelo e o progresso no primeiro uso, informa falha de conexão em português simples e permite tentar de novo pela própria tela (R36).
 
-Resultado: reprovado (não executável na interface atual).
-- Passo 1 a 4 (R36 - REPROVADO):
-  - Esperado: ao abrir `home.html` sem livros e com `/api/models` em `"status": "ausente"` (`total_bytes: 704643072`), a tela deveria mostrar o tamanho do modelo (~672 MB), iniciar/acompanhar o progresso do download, exibir mensagem em português em caso de queda de conexão e oferecer botão "Tentar de novo".
-  - Obtido: nenhuma tela em `ui/` (`ui/home.html` nem as demais) consulta `GET /api/models` ou aciona `POST /api/models/download` (`grep -rn "models" ui/` retorna vazio). A tela inicial mostra apenas "Nenhum livro ainda. Escolha um EPUB em português para começar." (`tests/ui/capturas/01-primeiro-uso-home.png`).
-  - O que falta para ser executável sem baixar de verdade: (1) `ui/home.html` consultar `GET /api/models`, exibir tamanho (`total_bytes`) e progresso (`bytes`), erro (`error`) e botão para chamar `POST /api/models/download` ("Baixar modelo" / "Tentar de novo"); (2) `studio/local_api.py` aceitar simulação de download por variável de ambiente (ou a tela reagir ao arquivo `models/portuguese_24l.json` gravado em `AUDIOBOOK_STUDIO_HOME`).
+Resultado: aprovado na 2ª rodada.
+- Histórico (1ª rodada): reprovado porque nenhuma tela em `ui/` consultava `/api/models` nem `/api/models/download`.
+- 2ª rodada (com `AUDIOBOOK_FAKE_DOWNLOAD=1` e `AUDIOBOOK_STUDIO_HOME` vazia):
+  - Passo 1: `home.html` abriu sem livros, exibiu o quadro `#modelo` com `"Tamanho do download: cerca de 672 MB."`, botão `"Baixar modelo"` e manteve `"Novo audiolivro"` desabilitado (`epub.disabled = true`, `novoLbl.classList.contains("disabled") = true`) (`tests/ui/capturas/01-primeiro-uso-home.png`).
+  - Passo 2: Ao iniciar o download, a barra (`#modeloFill`) e o texto (`#modeloProg`, ex.: `"Baixando… 269 MB de 672 MB (40%)."`) atualizaram na tela (`tests/ui/capturas/01-primeiro-uso-progresso.png`).
+  - Passo 3: Na 1ª tentativa simulada, a queda de conexão exibiu `"O download falhou. Verifique a conexão e tente de novo."` e o botão mudou para `"Tentar de novo"` (`tests/ui/capturas/01-primeiro-uso-erro.png`).
+  - Passo 4: Ao clicar em `"Tentar de novo"`, a 2ª tentativa completou até `pronto`, ocultou `#modelo` (`hidden = true`) e habilitou `"Novo audiolivro"` (`epub.disabled = false`).
