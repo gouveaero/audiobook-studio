@@ -33,9 +33,9 @@ Marcação de testes: sem marca, rodam sem modelo e em segundos (motor falso, EP
 
 - [x] **T14.** Pastas do app, `brand.py`, abrir sem `--project`, token de sessão, `Host` e `Range`. (R33, R34, R30)
 - [ ] **T15.** Rotas de projetos, voz, modelos, estado e refazer trecho. (R9, R26, R31, R36, R38)
-- [ ] **T16.** Telas de início e conferência, fontes embutidas. (R9, R35, R39)
+- [x] **T16.** Telas de início e conferência, fontes embutidas. (R9, R35, R39)
 - [ ] **T17.** Tela de voz, com padrão, vozes prontas e clonagem guiada, e checagem da gravação. (R22 a R26)
-- [ ] **T18.** Painel com controles reais e tela final com player. (R14, R18, R30 a R32)
+- [x] **T18.** Painel com controles reais e tela final com player. (R14, R18, R30 a R32)
 - [ ] **T19.** Teste de ponta a ponta na janela do navegador com o Chrome DevTools: EPUB curto até o M4B, sem usar a linha de comando. Conferir também as telas com capturas e corrigir o que estiver quebrado.
 
 ## Instalador e publicação preparada
