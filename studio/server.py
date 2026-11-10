@@ -19,7 +19,13 @@ from studio.local_api import baixar_modelo  # monkeypatchável nos testes
 from studio.prepare_book import BookError
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-UI = os.path.join(os.path.dirname(HERE), "ui")
+try:
+    from studio.paths import resource_dir, repo_root
+    UI = str(resource_dir() / "ui")
+    REPO = str(repo_root())
+except Exception:
+    UI = os.path.join(os.path.dirname(HERE), "ui")
+    REPO = os.path.dirname(HERE)
 P = ""
 JOBS = {}
 HIST = []

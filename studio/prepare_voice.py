@@ -11,8 +11,13 @@ import argparse, json, os, struct, subprocess, wave
 LIMIT = 15.0
 
 
+def _ffmpeg():
+    from studio.paths import ffmpeg_bin
+    return ffmpeg_bin()
+
+
 def to_wav(src, dst):
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", src, "-ac", "1", "-ar", "24000", dst], check=True)
+    subprocess.run([_ffmpeg(), "-y", "-loglevel", "error", "-i", src, "-ac", "1", "-ar", "24000", dst], check=True)
 
 
 def peaks(wav_path, bins=180):
@@ -43,9 +48,9 @@ def main(argv=None):
                 break
             picked.append(s)
         cut, text = picked[-1].end - t0, " ".join(s.text.strip() for s in picked)
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{t0:.2f}", "-i", full, "-t", f"{cut:.2f}", f"{out}/ref.wav"], check=True)
+        subprocess.run([_ffmpeg(), "-y", "-loglevel", "error", "-ss", f"{t0:.2f}", "-i", full, "-t", f"{cut:.2f}", f"{out}/ref.wav"], check=True)
     if a.text:
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", str(a.start), "-i", full, "-t", str(cut), f"{out}/ref.wav"], check=True)
+        subprocess.run([_ffmpeg(), "-y", "-loglevel", "error", "-ss", str(a.start), "-i", full, "-t", str(cut), f"{out}/ref.wav"], check=True)
     os.remove(full)
     open(f"{out}/ref.txt", "w", encoding="utf8").write(text + "\n")
     json.dump(peaks(f"{out}/ref.wav"), open(f"{out}/peaks.json", "w"))

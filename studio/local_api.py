@@ -74,8 +74,9 @@ def capa_valida(path: Path) -> bool:
     if not path.is_file() or path.stat().st_size < 200:
         return False
     try:
+        from studio.paths import ffmpeg_bin
         r = subprocess.run(
-            ["ffmpeg", "-v", "error", "-i", str(path), "-f", "null", "-"],
+            [ffmpeg_bin(), "-v", "error", "-i", str(path), "-f", "null", "-"],
             capture_output=True,
             text=True,
             timeout=20,
@@ -375,9 +376,11 @@ def start_generate(pid: str, *, only: str = "", extra: dict | None = None) -> di
     (p / "work").mkdir(parents=True, exist_ok=True)
     for f in ("pause", "cancel"):
         (p / "work" / f).unlink(missing_ok=True)
-    cmd = [sys.executable, "-m", "studio.generate", "--project", str(p), "--motor", motor]
+    from studio.boot import worker_cmd
+    args = ["--project", str(p), "--motor", motor]
     if only:
-        cmd.extend(["--only", only])
+        args.extend(["--only", only])
+    cmd = worker_cmd("generate", args)
     log = open(p / "work" / "generate.log", "ab")
     proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=log, stderr=subprocess.STDOUT)
     job = {
@@ -712,10 +715,10 @@ GRAVACAO_RUIDO_FRACAO = 0.55  # energia fora da faixa de fala (300 Hz a 4 kHz)
 
 def voice_pack_dir() -> Path | None:
     env = os.environ.get("VOICE_PACK_DIR")
-    if env and Path(env).is_dir():
+    if env and Path(env).is_dir() and (Path(env) / "manifest.json").is_file():
         return Path(env)
-    bundled = ROOT / "build" / "voice-pack"
-    return bundled if bundled.is_dir() else None
+    from studio.paths import voice_pack_bundled
+    return voice_pack_bundled()
 
 
 def settings_path() -> Path:
@@ -974,8 +977,9 @@ def save_cloned_voice(audio_bytes: bytes, *, label: str, text: str, consent: boo
     else:
         raw = vdir / "_upload"
         raw.write_bytes(audio_bytes)
+        from studio.paths import ffmpeg_bin
         r = subprocess.run(
-            ["ffmpeg", "-y", "-i", str(raw), "-ac", "1", "-ar", "16000", str(ref)],
+            [ffmpeg_bin(), "-y", "-i", str(raw), "-ac", "1", "-ar", "16000", str(ref)],
             capture_output=True, text=True,
         )
         raw.unlink(missing_ok=True)

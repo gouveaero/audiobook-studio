@@ -75,6 +75,9 @@ def test_voice_html_sem_travessao_nem_google_fonts():
 
 
 def test_r22_voz_padrao_ou_fallback_selecionada_sem_login(api, casa, monkeypatch, tmp_path):
+    # Sem pacote: VOICE_PACK_DIR sem manifest desliga também o build/voice-pack local
+    monkeypatch.setenv("VOICE_PACK_DIR", str(tmp_path / "sem-pacote"))
+    (tmp_path / "sem-pacote").mkdir()
     data = json.loads(api.req("GET", "/api/voices")[2])
     assert data["selected"] == "rafael"
     assert data["hf_logged_in"] is False

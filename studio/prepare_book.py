@@ -276,7 +276,8 @@ def extract_cover(z, path_out):
 
 def generate_cover(path_out):
     """Capa simples para livro sem capa: quadrado escuro com moldura clara (o ffmpeg do app não desenha texto)."""
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=0x23304a:s=1400x1400",
+    from studio.paths import ffmpeg_bin
+    subprocess.run([ffmpeg_bin(), "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=0x23304a:s=1400x1400",
                     "-vf", "drawbox=x=90:y=90:w=1220:h=1220:color=0xe8dcc4:t=10,"
                            "drawbox=x=130:y=1050:w=1140:h=6:color=0xe8dcc4:t=fill",
                     "-frames:v", "1", "-q:v", "3", path_out], check=True)

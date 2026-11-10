@@ -27,6 +27,11 @@ EQ_GRAVES_HZ = 350.0
 EQ_GRAVES_FRACAO = 0.60
 
 
+def _ffmpeg():
+    from studio.paths import ffmpeg_bin
+    return ffmpeg_bin()
+
+
 def _run(cmd):
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode:
@@ -40,7 +45,7 @@ def _ffmpeg_filter(samples, sr, filt):
         src = os.path.join(tmp, "in.wav")
         dst = os.path.join(tmp, "out.wav")
         write_wav(src, samples, sr)
-        _run(["ffmpeg", "-y", "-loglevel", "error", "-i", src, "-af", filt, dst])
+        _run([_ffmpeg(), "-y", "-loglevel", "error", "-i", src, "-af", filt, dst])
         out, out_sr = read_wav(dst)
         if out_sr != sr:
             raise RuntimeError(f"taxa mudou de {sr} para {out_sr}")
@@ -61,7 +66,7 @@ def medir_lufs(samples, sr):
         path = os.path.join(tmp, "a.wav")
         write_wav(path, samples, sr)
         r = subprocess.run(
-            ["ffmpeg", "-i", path, "-af", "ebur128=framelog=verbose", "-f", "null", "-"],
+            [_ffmpeg(), "-i", path, "-af", "ebur128=framelog=verbose", "-f", "null", "-"],
             capture_output=True, text=True,
         )
         m = re.search(r"I:\s*([-\d.]+)\s*LUFS", r.stderr)

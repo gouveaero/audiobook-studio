@@ -1,2 +1,4 @@
 -r requirements-app.txt
 pytest>=8
+pyinstaller==6.14.2
+

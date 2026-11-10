@@ -220,9 +220,11 @@ def main(argv=None):
             pass  # a interface apaga os pedidos antigos antes de iniciar; aqui só lemos
         n = a.workers or (3 if device == "cuda" else 1)
         if n > 1:  # processo pai: abre N filhos que dividem a fila por trava
-            kids = [subprocess.Popen([sys.executable, "-m", "studio.generate", "--project", P, "--only", a.only,
-                                      "--device", device, "--steps", str(a.steps), "--motor", motor, "--worker-child"])
-                    for _ in range(n)]
+            from studio.boot import worker_cmd
+            kids = [subprocess.Popen(worker_cmd("generate", [
+                "--project", P, "--only", a.only, "--device", device,
+                "--steps", str(a.steps), "--motor", motor, "--worker-child",
+            ])) for _ in range(n)]
             code = max(k.wait() for k in kids)
             if code:
                 tarefa.update(status="erro", error="A geração falhou num dos processos. Veja o log.")
@@ -390,7 +392,8 @@ def rodar(P, a, book, chapters, motor, device, tarefa, total, estado):
         )
         wav, tmp, out = f"{P}/work/{c['id']}.{os.getpid()}.wav", f"{P}/chapters/{c['id']}.{os.getpid()}.tmp.m4a", f"{P}/chapters/{c['id']}.m4a"
         write_wav_atomic(wav, audio, wsr)
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", wav, "-ac", "1", "-b:a", "64k", tmp], check=True)
+        from studio.paths import ffmpeg_bin
+        subprocess.run([ffmpeg_bin(), "-y", "-loglevel", "error", "-i", wav, "-ac", "1", "-b:a", "64k", tmp], check=True)
         os.remove(wav)
         os.rename(tmp, out)  # só existe como NN.m4a quando está completo
         estado["trava"] = None

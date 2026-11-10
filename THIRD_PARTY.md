@@ -45,10 +45,18 @@ Licenças apuradas a partir dos metadados dos pacotes instalados no `.venv` dest
 
 ## ffmpeg / ffprobe (binário embutido no instalador)
 
-- **Uso:** preparar voz, montar M4A/M4B e vídeo.
-- **Origem prevista do binário no instalador Mac:** build estático oficial ou equivalente documentado em `scripts/build_mac.sh` (T20), a partir de https://ffmpeg.org/
-- **Licença deste tipo de build com codecs GPL (x264 etc.):** GPL-3.0-or-later.
-- **Conferência nesta máquina (não é o binário do instalador):** Homebrew `ffmpeg` 9.0.2 (`brew info ffmpeg` declara `License: GPL-3.0-or-later`; `ffmpeg -L` cita GPLv3+). O instalador deve registrar a origem exata do arquivo embutido quando a T20 fechar o pacote.
+- **Uso:** preparar voz, montar M4A/M4B e, se pedido, vídeo. No app empacotado os binários embutidos têm prioridade sobre o PATH (`studio/paths.py`).
+- **Origem do binário arm64 macOS (T20):** release `autobuild-2026-08-30` de https://github.com/livefantasia/ffmpeg-macos-build — arquivo `ffmpeg-8.1.2-aarch64-apple-darwin-lgpl.zip`.
+- **Versão:** FFmpeg 8.1.2.
+- **Licença:** **LGPL-2.1-or-later** (build sem `--enable-gpl`, sem `--enable-nonfree`, sem `--enable-version3`). Preferido em relação a builds GPL (B10).
+- **O que cobre no app:** AAC (AudioToolbox), concat, filtros de áudio, ebur128, capa (lavfi/drawbox) e vídeo opcional via VideoToolbox. Sem libx264/libx265 (software H.264/H.265).
+- **Soma de verificação (SHA-256), conferida neste Mac ao rodar `scripts/build_mac.sh`:**
+  - zip: `61163696da382f2c5aa7a7babe4abeb1ff7636e364db6a165e93059adfb13cd2`
+  - `ffmpeg`: `99a57719e7684a82eef60881c75ec23383ff25a32aa208882b9d5ba6b477fb2e`
+  - `ffprobe`: `4249ec335dc30db0331d002058c7c528c770ac86cc24c522f022020b572ce556`
+  - Cópia local também em `build/bin/ffmpeg-source.txt` (fora do git).
+- **Código-fonte correspondente:** tarball FFmpeg 8.1.2 em https://ffmpeg.org/ e o script de build do repositório acima (oferta LGPL).
+- **Conferência nesta máquina (desenvolvimento, não é o embutido):** Homebrew `ffmpeg` 9.0.2 é GPL-3.0-or-later e não vai no instalador.
 
 ## Fontes embutidas (ui/fonts/)
 

@@ -65,7 +65,8 @@ def vm_background(cmd, name, limit=1200):
 
 
 def probe_ok(path):
-    return subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
+    from studio.paths import ffprobe_bin
+    return subprocess.run([ffprobe_bin(), "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
                           capture_output=True).returncode == 0
 
 

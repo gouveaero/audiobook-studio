@@ -28,6 +28,12 @@ ROMAN = {"I": "I", "II": "II", "III": "III", "IV": "IV", "V": "V", "VI": "VI", "
 
 
 def run(*cmd):
+    from studio.paths import ffmpeg_bin, ffprobe_bin
+    cmd = list(cmd)
+    if cmd and cmd[0] == "ffmpeg":
+        cmd[0] = ffmpeg_bin()
+    elif cmd and cmd[0] == "ffprobe":
+        cmd[0] = ffprobe_bin()
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode:
         raise RuntimeError("ERRO: " + " ".join(cmd[:4]) + "...\n" + (r.stderr or "")[-800:])
