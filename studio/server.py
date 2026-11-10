@@ -1,19 +1,25 @@
 """Interface local: assistente de configuração (livro, voz, onde gerar) e painel ao vivo.
 
   python -m studio.server --project projects/meu-livro [--port 8791]
-  abre http://localhost:8791/  (assistente)   e   /dashboard.html  (painel; ?demo=1 simula)
+  python -m studio.server [--port 8791]   # multi-projeto sob AUDIOBOOK_STUDIO_HOME
+  abre http://127.0.0.1:8791/  (assistente)   e   /dashboard.html  (painel; ?demo=1 simula)
 
-Escuta só em 127.0.0.1. Os uploads vão para o projeto; a geração roda em subprocessos (studio.generate / studio.cloud).
+Escuta só em 127.0.0.1. POST/PUT/DELETE exigem X-Studio-Token. Todo pedido exige Host local.
+Os uploads vão para o projeto; a geração roda em subprocessos (studio.generate / studio.cloud).
 """
-import argparse, json, os, re, subprocess, sys, threading, time
+import argparse, json, os, re, secrets, subprocess, sys, threading, time
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse
+
+from studio.brand import APP_NAME, ensure_dirs, app_home
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UI = os.path.join(os.path.dirname(HERE), "ui")
 P = ""
 JOBS = {}
 HIST = []
+SESSION_TOKEN = ""
+PORT = 8791
 
 
 def pj(*a):
@@ -89,31 +95,127 @@ class H(SimpleHTTPRequestHandler):
         self.send_response(code); self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
 
+    def _host_ok(self):
+        host = (self.headers.get("Host") or "").strip().lower()
+        return host == f"127.0.0.1:{PORT}"
+
+    def _token_ok(self):
+        if not SESSION_TOKEN:
+            return True
+        return self.headers.get("X-Studio-Token") == SESSION_TOKEN
+
+    def _guard(self, mutating):
+        if not self._host_ok():
+            self.send_json({"error": "Pedido recusado."}, 403)
+            return False
+        if mutating and not self._token_ok():
+            self.send_json({"error": "Pedido recusado."}, 403)
+            return False
+        return True
+
+    def send_file_range(self, path, content_type):
+        """Serve arquivo com suporte a Range (206), exigido pelo WebKit no player."""
+        size = os.path.getsize(path)
+        rng = self.headers.get("Range")
+        if rng and rng.startswith("bytes="):
+            spec = rng[6:].strip()
+            if "," in spec:
+                self.send_error(416)
+                return
+            start_s, _, end_s = spec.partition("-")
+            try:
+                if start_s == "":
+                    # bytes=-N
+                    length = int(end_s)
+                    start = max(0, size - length)
+                    end = size - 1
+                else:
+                    start = int(start_s)
+                    end = int(end_s) if end_s else size - 1
+            except ValueError:
+                self.send_error(416)
+                return
+            if start < 0 or start >= size or end < start:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.end_headers()
+                return
+            end = min(end, size - 1)
+            length = end - start + 1
+            with open(path, "rb") as f:
+                f.seek(start)
+                data = f.read(length)
+            self.send_response(206)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            self.send_header("Content-Length", str(length))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        with open(path, "rb") as f:
+            data = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_GET(self):
+        if not self._guard(False):
+            return
         p = urlparse(self.path).path
-        if p == "/api/state": return self.send_json(state())
-        if p == "/config.json": return self.send_json(config())
-        if p == "/voice_peaks.json": return self.send_json(jload(pj("voice", "peaks.json"), [.3] * 180))
-        if p == "/api/voice": return self.send_json({"text": open(pj("voice", "ref.txt"), encoding="utf8").read().strip() if os.path.exists(pj("voice", "ref.txt")) else ""})
-        if p == "/voice/ref.wav" and os.path.exists(pj("voice", "ref.wav")):
-            b = open(pj("voice", "ref.wav"), "rb").read()
-            self.send_response(200); self.send_header("Content-Type", "audio/wav"); self.send_header("Content-Length", str(len(b))); self.end_headers(); return self.wfile.write(b)
-        if p == "/": self.path = "/setup.html"
+        if p == "/api/state":
+            if not P:
+                return self.send_json({"error": "Nenhum projeto aberto."}, 400)
+            return self.send_json(state())
+        if p == "/api/projects":
+            # stub até T15: lista vazia ou projetos em app_home
+            root = app_home() / "projects"
+            items = []
+            if root.is_dir():
+                for d in sorted(root.iterdir()):
+                    if d.is_dir() and (d / "book.json").exists():
+                        book = jload(str(d / "book.json"), {}) or {}
+                        items.append({"id": d.name, "title": book.get("title", d.name), "author": book.get("author", "")})
+            return self.send_json({"projects": items})
+        if p == "/config.json":
+            if not P:
+                return self.send_json({"app": APP_NAME})
+            return self.send_json(config())
+        if p == "/voice_peaks.json":
+            return self.send_json(jload(pj("voice", "peaks.json"), [.3] * 180) if P else [.3] * 180)
+        if p == "/api/voice":
+            if not P:
+                return self.send_json({"text": ""})
+            return self.send_json({"text": open(pj("voice", "ref.txt"), encoding="utf8").read().strip() if os.path.exists(pj("voice", "ref.txt")) else ""})
+        if p == "/voice/ref.wav" and P and os.path.exists(pj("voice", "ref.wav")):
+            return self.send_file_range(pj("voice", "ref.wav"), "audio/wav")
+        if p == "/":
+            self.path = "/setup.html"
         super().do_GET()
 
     def body(self):
         return self.rfile.read(int(self.headers.get("Content-Length", 0)))
 
     def do_POST(self):
+        if not self._guard(True):
+            return
         p = urlparse(self.path).path
-        os.makedirs(pj("work"), exist_ok=True)
+        if P:
+            os.makedirs(pj("work"), exist_ok=True)
         try:
             if p == "/api/book":      # corpo = bytes do .epub
+                if not P:
+                    return self.send_json({"error": "Abra um projeto antes."}, 400)
                 open(pj("book.epub"), "wb").write(self.body())
                 r = subprocess.run([sys.executable, "-m", "studio.prepare_book", pj("book.epub"), pj("book.json")], cwd=os.path.dirname(HERE), capture_output=True, text=True)
                 if r.returncode: return self.send_json({"error": r.stderr[-400:]}, 400)
                 b = jload(pj("book.json")); return self.send_json({"title": b["title"], "author": b["author"], "chapters": len(b["chapters"]), "summary": r.stdout.strip()})
             if p == "/api/voice":     # corpo = áudio (qualquer formato que o ffmpeg leia)
+                if not P:
+                    return self.send_json({"error": "Abra um projeto antes."}, 400)
                 os.makedirs(pj("voice"), exist_ok=True)
                 open(pj("voice", "_upload"), "wb").write(self.body())
                 lang = (jload(pj("book.json"), {}) or {}).get("language", "pt")
@@ -121,10 +223,16 @@ class H(SimpleHTTPRequestHandler):
                 if r.returncode: return self.send_json({"error": r.stderr[-400:]}, 400)
                 return self.send_json({"text": open(pj("voice", "ref.txt"), encoding="utf8").read().strip()})
             if p == "/api/voice-text":  # o usuário corrige a transcrição
+                if not P:
+                    return self.send_json({"error": "Abra um projeto antes."}, 400)
                 open(pj("voice", "ref.txt"), "w", encoding="utf8").write(json.loads(self.body())["text"].strip() + "\n"); return self.send_json({"ok": True})
             if p == "/api/config":
+                if not P:
+                    return self.send_json({"error": "Abra um projeto antes."}, 400)
                 c = jload(pj("config.json"), {}) or {}; c.update(json.loads(self.body())); json.dump(c, open(pj("config.json"), "w"), ensure_ascii=False, indent=1); return self.send_json({"ok": True})
             if p == "/api/start":
+                if not P:
+                    return self.send_json({"error": "Abra um projeto antes."}, 400)
                 o = json.loads(self.body() or b"{}")
                 if not (os.path.exists(pj("book.json")) and os.path.exists(pj("voice", "ref.wav"))):
                     return self.send_json({"error": "Falta o livro ou a voz."}, 400)
@@ -134,20 +242,39 @@ class H(SimpleHTTPRequestHandler):
                     spawn("generate", [sys.executable, "-m", "studio.generate", "--project", P], os.path.dirname(HERE))
                 return self.send_json({"ok": True})
             if p == "/api/assemble":
-                c = config(); spawn("assemble", [sys.executable, "-m", "studio.assemble", "--project", P], os.path.dirname(HERE)); return self.send_json({"ok": True})
+                if not P:
+                    return self.send_json({"error": "Abra um projeto antes."}, 400)
+                spawn("assemble", [sys.executable, "-m", "studio.assemble", "--project", P], os.path.dirname(HERE)); return self.send_json({"ok": True})
         except Exception as e:
-            return self.send_json({"error": str(e)}, 500)
+            return self.send_json({"error": "Algo deu errado. Veja o log."}, 500)
+        self.send_json({"error": "rota desconhecida"}, 404)
+
+    def do_PUT(self):
+        if not self._guard(True):
+            return
+        self.send_json({"error": "rota desconhecida"}, 404)
+
+    def do_DELETE(self):
+        if not self._guard(True):
+            return
         self.send_json({"error": "rota desconhecida"}, 404)
 
     def log_message(self, *a):
         pass
 
 
-if __name__ == "__main__":
+def main(argv=None):
+    global P, SESSION_TOKEN, PORT
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--project", required=True); ap.add_argument("--port", type=int, default=8791)
+    ap.add_argument("--project", default=None)
+    ap.add_argument("--port", type=int, default=8791)
+    ap.add_argument("--token", default=None, help="token de sessão (gerado se omitido)")
     ap.add_argument("--exit-with-parent", action="store_true", help="encerra quando o processo pai (o app) sair")
-    a = ap.parse_args(); P = os.path.abspath(a.project)
+    a = ap.parse_args(argv)
+    ensure_dirs()
+    PORT = a.port
+    SESSION_TOKEN = a.token or secrets.token_urlsafe(24)
+    P = os.path.abspath(a.project) if a.project else ""
     if a.exit_with_parent:
         ppid = os.getppid()
         def watch():
@@ -155,7 +282,13 @@ if __name__ == "__main__":
                 time.sleep(2)
             os._exit(0)
         threading.Thread(target=watch, daemon=True).start()
-    for d in ("work/chunks", "chapters", "voice"):
-        os.makedirs(pj(d), exist_ok=True)
-    print(f"http://localhost:{a.port}/  (projeto: {P})", flush=True)
-    ThreadingHTTPServer(("127.0.0.1", a.port), H).serve_forever()
+    if P:
+        for d in ("work/chunks", "chapters", "voice"):
+            os.makedirs(pj(d), exist_ok=True)
+    print(f"http://127.0.0.1:{PORT}/  (projeto: {P or 'nenhum'}; app: {APP_NAME})", flush=True)
+    # Token só no stderr do processo pai via app.py; nunca imprima o token aqui.
+    ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
+
+
+if __name__ == "__main__":
+    main()

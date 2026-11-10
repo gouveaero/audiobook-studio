@@ -1,6 +1,6 @@
 """Abre a interface como um app (janela própria, sem abas nem barra de endereço).
 
-  python -m studio app --project projects/meu-livro [--page dashboard] [--port 8791]
+  python -m studio app [--project projects/meu-livro] [--page dashboard] [--port 8791]
 
 Sobe o studio.server em segundo plano e abre a janela:
   1. pywebview (`pip install pywebview`): janela nativa do sistema (WebKit no macOS, WebView2 no Windows);
@@ -8,7 +8,9 @@ Sobe o studio.server em segundo plano e abre a janela:
   3. em último caso, o navegador padrão.
 Fechar a janela encerra o servidor. A geração em andamento (nuvem ou local) continua: é outro processo.
 """
-import argparse, os, shutil, socket, subprocess, sys, time, urllib.request, webbrowser
+import argparse, os, secrets, shutil, socket, subprocess, sys, time, urllib.request, webbrowser
+
+from studio.brand import APP_NAME, ensure_dirs
 
 BROWSERS = [
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -38,18 +40,37 @@ def wait_up(url, secs=20):
     return False
 
 
-def main():
+def build_parser():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--project", required=True)
-    ap.add_argument("--page", choices=["setup", "dashboard"], default="setup")
+    ap.add_argument("--project", default=None, help="projeto único (modo skill); omitido abre a lista de livros")
+    ap.add_argument("--page", choices=["setup", "dashboard", "home", "review", "voice", "ready"], default="setup")
     ap.add_argument("--port", type=int, default=8791)
-    a = ap.parse_args()
+    return ap
+
+
+def page_path(page: str) -> str:
+    if page == "dashboard":
+        return "dashboard.html"
+    if page == "setup":
+        return ""
+    return f"{page}.html"
+
+
+def main(argv=None):
+    a = build_parser().parse_args(argv)
+    ensure_dirs()
     port = free_port(a.port)
+    token = secrets.token_urlsafe(24)
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    srv = subprocess.Popen([sys.executable, "-m", "studio.server", "--project", os.path.abspath(a.project), "--port", str(port), "--exit-with-parent"],
-                           cwd=root, stdout=subprocess.DEVNULL)
-    url = f"http://127.0.0.1:{port}/" + ("dashboard.html" if a.page == "dashboard" else "")
-    if not wait_up(f"http://127.0.0.1:{port}/config.json"):
+    cmd = [sys.executable, "-m", "studio.server", "--port", str(port), "--token", token, "--exit-with-parent"]
+    if a.project:
+        cmd.extend(["--project", os.path.abspath(a.project)])
+    srv = subprocess.Popen(cmd, cwd=root, stdout=subprocess.DEVNULL)
+    base = f"http://127.0.0.1:{port}"
+    # Token na query para a UI enviar X-Studio-Token nos POST/PUT/DELETE.
+    path = page_path(a.page)
+    url = f"{base}/{path}?token={token}" if path else f"{base}/?token={token}"
+    if not wait_up(f"{base}/config.json"):
         srv.terminate(); sys.exit("O servidor da interface não subiu.")
     try:
         try:
@@ -58,12 +79,12 @@ def main():
                 try:
                     from Foundation import NSBundle
                     from AppKit import NSApplication, NSImage
-                    NSBundle.mainBundle().infoDictionary()["CFBundleName"] = "Audiobook Studio"
+                    NSBundle.mainBundle().infoDictionary()["CFBundleName"] = APP_NAME
                     NSApplication.sharedApplication().setApplicationIconImage_(
                         NSImage.alloc().initWithContentsOfFile_(os.path.join(root, "assets", "logo.png")))
                 except Exception:
                     pass
-            webview.create_window("Audiobook Studio", url, width=1600, height=900, background_color="#02070c")
+            webview.create_window(APP_NAME, url, width=1600, height=900, background_color="#02070c")
             webview.start()
             return
         except ImportError:
