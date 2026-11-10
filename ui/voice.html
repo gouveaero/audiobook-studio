@@ -57,7 +57,8 @@ textarea { min-height: 72px; resize: vertical; }
     <button type="button" class="go" id="seguir">Continuar</button>
   </div>
   <h1>Escolher a voz</h1>
-  <p class="sub">A voz padrão já vem selecionada, sem login. Ouça as prontas ou use a sua voz.</p>
+  <p class="sub" id="subVoz">A voz padrão já vem escolhida. Ouça as outras ou use a sua.</p>
+  <p class="sub" id="vozEscolhida" style="margin-top:-12px;margin-bottom:18px;color:var(--a)"></p>
   <div id="err" class="err" hidden></div>
   <div id="lista" class="lista"></div>
 
@@ -125,7 +126,7 @@ function desenhar() {
     const el = document.createElement("div");
     el.className = "voz" + (v.id === estado.selected ? " on" : "");
     const tipo = v.kind === "padrao" ? "Voz padrão" : (v.kind === "pronta" ? "Voz pronta" : "Minha voz");
-    const local = v.local ? "já neste computador" : "baixa ao escolher ou ouvir";
+    const local = v.local ? "já neste computador" : "Precisa de internet na primeira vez";
     el.innerHTML =
       "<div><h2></h2><p></p></div>" +
       '<div class="acoes">' +
@@ -158,6 +159,9 @@ function desenhar() {
   });
   $("fraseLeitura").textContent = '"' + (estado.preview_phrase || "Olá. Esta é uma frase curta para ouvir a voz.") + '"';
   $("hfOk").hidden = !estado.hf_logged_in;
+  const sel = (estado.voices || []).find((v) => v.id === estado.selected);
+  const labelSel = sel ? (sel.label || sel.name || sel.id) : "";
+  $("vozEscolhida").textContent = labelSel ? ("Selecionada: " + labelSel) : "";
 }
 
 async function carregar() {

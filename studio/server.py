@@ -295,14 +295,25 @@ class H(SimpleHTTPRequestHandler):
                         raise FileNotFoundError(pid)
                     book = jload(str(proj / "book.json"), {}) or {}
                     cfg = jload(str(proj / "config.json"), {}) or {}
+                    voz = cfg.get("voz_label") or cfg.get("voz") or ""
+                    if not voz:
+                        man_path = proj / "voice" / "manifest.json"
+                        if man_path.is_file():
+                            try:
+                                voz = (json.loads(man_path.read_text(encoding="utf8")).get("label") or "")
+                            except (OSError, ValueError):
+                                voz = ""
                     out = {
                         "livro": book.get("title", "Livro"),
                         "autor": book.get("author", ""),
-                        "voz": cfg.get("voz") or "voz",
+                        "voz": voz or "voz",
+                        "voz_label": voz or "voz",
                         "motor": cfg.get("motor") or "pocket",
                         "capitulos": len([c for c in book.get("chapters", []) if c.get("include", True)]) or 1,
                     }
                     out.update(cfg)
+                    out["voz"] = voz or out.get("voz") or "voz"
+                    out["voz_label"] = out["voz"]
                     return self.send_json(out)
             if p == "/config.json":
                 if not P:

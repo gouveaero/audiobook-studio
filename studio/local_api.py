@@ -69,6 +69,31 @@ def slugify(texto: str) -> str:
     return (s[:60] or "livro")
 
 
+def capa_valida(path: Path) -> bool:
+    """True se ffmpeg consegue ler a imagem (capa usável na montagem, R7)."""
+    if not path.is_file() or path.stat().st_size < 200:
+        return False
+    try:
+        r = subprocess.run(
+            ["ffmpeg", "-v", "error", "-i", str(path), "-f", "null", "-"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        return r.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def garantir_capa_projeto(dest: Path) -> None:
+    """Garante cover.jpg válido; se a do EPUB for ilegível, gera capa simples (R7)."""
+    capa = dest / "cover.jpg"
+    if capa_valida(capa):
+        return
+    from studio.prepare_book import generate_cover
+    generate_cover(str(capa))
+
+
 def projects_root() -> Path:
     ensure_dirs()
     return app_home() / "projects"
@@ -133,6 +158,7 @@ def create_project_from_epub(epub_bytes: bytes) -> dict:
         shutil.copy2(epub_path, dest / "book.epub")
         for sub in ("work/chunks", "chapters", "voice", "audiobook"):
             (dest / sub).mkdir(parents=True, exist_ok=True)
+        garantir_capa_projeto(dest)
         (dest / "config.json").write_text(
             json.dumps({"motor": "pocket", "model": MODEL_ID}, ensure_ascii=False, indent=1),
             encoding="utf8",
@@ -251,9 +277,25 @@ def project_state(pid: str) -> dict:
         "chars_total": tot,
         "chars_per_second": cps,
         "m4b": job.get("m4b"),
-        "error": job.get("error"),
+        "error": _erro_publico(job.get("error")) if job.get("error") else None,
         "flagged": flagged,
     }
+
+
+def _erro_publico(msg: str | None) -> str:
+    """Mensagem para a tela: português, sem traceback, caminho ou nome de exceção (R38)."""
+    texto = (msg or "").strip() or "Algo deu errado. Veja o log."
+    if "Traceback" in texto or re.search(r"/Users/|/home/|\\\\|work/generate\.log", texto):
+        if "montagem" in texto.lower():
+            return "A montagem do audiolivro falhou. Veja o log para o detalhe."
+        if "geração" in texto.lower() or "geracao" in texto.lower():
+            return "A geração falhou. Veja o log para o detalhe."
+        return "Algo deu errado. Veja o log."
+    if re.search(r"\b(Error|Exception|KeyError|TypeError|ValueError|RuntimeError|OSError)\b", texto):
+        if "montagem" in texto.lower():
+            return "A montagem do audiolivro falhou. Veja o log para o detalhe."
+        return "Algo deu errado. Veja o log."
+    return texto
 
 
 def _flagged_from_progress(p: Path) -> list[dict]:
@@ -960,36 +1002,55 @@ def save_cloned_voice(audio_bytes: bytes, *, label: str, text: str, consent: boo
 
 
 def attach_voice_to_project(pid: str, voice_id: str) -> None:
-    """Copia o manifest da voz para voice/manifest.json do projeto (onde a geração lê)."""
+    """Copia o manifest da voz para voice/manifest.json do projeto (onde a geração lê).
+
+    Também grava o rótulo em config.json (`voz` / `voz_label`) para o painel (R38).
+    """
     p = project_path(pid)
     if not p:
         raise FileNotFoundError(pid)
     src = None
+    man = None
     pack = voice_pack_dir()
     if pack and (pack / "manifest.json").is_file():
         man = json.loads((pack / "manifest.json").read_text(encoding="utf8"))
         if man.get("id") == voice_id:
             src = pack / "manifest.json"
+        else:
+            man = None
     if src is None:
         cand = app_home() / "voices" / voice_id / "manifest.json"
         if cand.is_file():
             src = cand
+            man = json.loads(cand.read_text(encoding="utf8"))
     if src is None:
         # voz pronta: só grava o manifesto sem arquivo
+        rotulo = voice_id.replace("_", " ").title()
         man = {
-            "id": voice_id, "label": voice_id, "engine": "pocket",
+            "id": voice_id, "label": f"voz {rotulo}", "engine": "pocket",
             "model": MODEL_ID, "name": voice_id, "eq": False,
         }
         (p / "voice").mkdir(parents=True, exist_ok=True)
         (p / "voice" / "manifest.json").write_text(json.dumps(man, ensure_ascii=False, indent=1), encoding="utf8")
-        return
-    (p / "voice").mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, p / "voice" / "manifest.json")
-    # copia ref se existir (voz clonada / pacote)
-    for name in ("ref.wav", "ref.txt"):
-        f = src.parent / name
-        if f.is_file():
-            shutil.copy2(f, p / "voice" / name)
+    else:
+        (p / "voice").mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, p / "voice" / "manifest.json")
+        # copia ref se existir (voz clonada / pacote)
+        for name in ("ref.wav", "ref.txt"):
+            f = src.parent / name
+            if f.is_file():
+                shutil.copy2(f, p / "voice" / name)
+        if man is None:
+            man = json.loads((p / "voice" / "manifest.json").read_text(encoding="utf8"))
+    rotulo = (man or {}).get("label") or voice_id
+    cfg_path = p / "config.json"
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf8")) if cfg_path.is_file() else {}
+    except (OSError, ValueError):
+        cfg = {}
+    cfg["voz"] = rotulo
+    cfg["voz_label"] = rotulo
+    cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=1), encoding="utf8")
 
 
 def version_info() -> dict:

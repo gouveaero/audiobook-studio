@@ -216,7 +216,7 @@ async function carregar() {
     el.className = "item";
     el.innerHTML = `<div><h2></h2><p></p></div><button type="button">Abrir</button>`;
     el.querySelector("h2").textContent = p.title || p.id;
-    el.querySelector("p").textContent = (p.author ? p.author + " · " : "") + p.id;
+    el.querySelector("p").textContent = p.author || "";
     el.querySelector("button").onclick = () => { location.href = studio.href("/review.html?id=" + encodeURIComponent(p.id)); };
     lista.appendChild(el);
   }

@@ -225,7 +225,7 @@ def main(argv=None):
                     for _ in range(n)]
             code = max(k.wait() for k in kids)
             if code:
-                tarefa.update(status="erro", error="A geração falhou num dos processos. Veja work/generate.log.")
+                tarefa.update(status="erro", error="A geração falhou num dos processos. Veja o log.")
                 sys.exit(code)
             finalizar(P, tarefa, incluidos, a.no_assemble)
             return
@@ -243,7 +243,7 @@ def main(argv=None):
         if estado["trava"] and os.path.exists(estado["trava"]):
             os.remove(estado["trava"])
         traceback.print_exc()
-        tarefa.update(status="erro", error=f"A geração falhou ({type(e).__name__}). O detalhe está em work/generate.log.")
+        tarefa.update(status="erro", error="A geração falhou. Veja o log para o detalhe.")
         sys.exit(1)
     finally:
         if caf is not None:
@@ -263,7 +263,7 @@ def finalizar(P, tarefa, incluidos, sem_montar=False):
         m4b = montar_projeto(P, video=False)
     except Exception as e:
         traceback.print_exc()
-        tarefa.update(status="erro", error=f"A montagem do audiolivro falhou ({type(e).__name__}). O detalhe está em work/generate.log.")
+        tarefa.update(status="erro", error="A montagem do audiolivro falhou. Veja o log para o detalhe.")
         sys.exit(1)
     tarefa.update(status="pronto", m4b=str(m4b), eta_seconds=0)
 
