@@ -20,6 +20,7 @@ import argparse, json, os, subprocess, sys, time, warnings
 
 import numpy as np
 
+from studio.audio import eq_do_projeto, montar_capitulo
 from studio.engines import engine_name, load_engine
 from studio.wavio import read_wav, write_wav
 
@@ -131,10 +132,13 @@ def main(argv=None):
             return False
 
     t0 = time.time()
+    usar_eq = eq_do_projeto(P)
+    prev_trailing = 0.0
     for c in chapters:
         if not claim(c):
             continue
         parts, flagged = [], []
+        wsr = sr
         for k, (txt, pz) in enumerate(zip(c["chunks"], c["pauses"])):
             f = f"{P}/work/chunks/{c['id']}_{k:04d}.wav"
             if not os.path.exists(f):
@@ -144,9 +148,12 @@ def main(argv=None):
                 if att == -1:
                     flagged.append(k)
             w, wsr = read_wav(f)
-            parts += [w, np.zeros(int(wsr * pz), dtype=np.float32)]
+            parts.append(w)
+        audio, prev_trailing = montar_capitulo(
+            parts, c["pauses"], c.get("head") or [], wsr, eq=usar_eq, prev_trailing=prev_trailing,
+        )
         wav, tmp, out = f"{P}/work/{c['id']}.{os.getpid()}.wav", f"{P}/chapters/{c['id']}.{os.getpid()}.tmp.m4a", f"{P}/chapters/{c['id']}.m4a"
-        write_wav(wav, np.concatenate(parts), wsr)
+        write_wav(wav, audio, wsr)
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", wav, "-ac", "1", "-b:a", "64k", tmp], check=True)
         os.remove(wav)
         os.rename(tmp, out)  # só existe como NN.m4a quando está completo
