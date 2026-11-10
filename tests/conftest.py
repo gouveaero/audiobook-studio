@@ -45,3 +45,40 @@ def ambiente_fake(monkeypatch):
         if v.startswith("FAKE_ENGINE_"):
             monkeypatch.delenv(v)
     return monkeypatch
+
+
+def local_md() -> str:
+    """Conteúdo de LOCAL_MD (caminhos desta máquina, fora do git). Pula o teste se não houver."""
+    caminho = os.environ.get("LOCAL_MD")
+    if not caminho or not Path(caminho).expanduser().is_file():
+        pytest.skip("LOCAL_MD não definido; os testes com modelo precisam dos caminhos desta máquina")
+    return Path(caminho).expanduser().read_text(encoding="utf-8")
+
+
+def local_paths() -> dict:
+    """Mapeia o rótulo de cada linha de LOCAL_MD ("Exportada", "Livro 1", ...) para o caminho entre crases, expandido."""
+    paths = {}
+    for linha in local_md().splitlines():
+        linha = linha.strip().lstrip("- ")
+        if "`" not in linha or ":" not in linha.split("`", 1)[0]:
+            continue
+        rotulo = linha.split(":", 1)[0].strip()
+        valor = linha.split("`", 2)[1]
+        paths[rotulo] = os.path.expanduser(valor)
+    for linha in local_md().splitlines():  # o Python do Whisper fica numa linha só com o caminho
+        if linha.strip().startswith("`") and linha.strip().rstrip("`").endswith("/bin/python"):
+            paths["whisper_python"] = os.path.expanduser(linha.strip().strip("`"))
+    return paths
+
+
+def hf_home_sem_login(tmp_path) -> dict:
+    """Ambiente para um processo do Pocket sem login: HF_HOME vazio (ou o cache de HF_HOME_SEM_LOGIN, que
+    não pode ter token) e sem HF_TOKEN. Nunca imprime nem copia o token do Hugging Face."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("HF_") and k != "HUGGING_FACE_HUB_TOKEN"}
+    home = Path(os.environ.get("HF_HOME_SEM_LOGIN") or tmp_path / "hf-vazio")
+    home.mkdir(parents=True, exist_ok=True)
+    assert not (home / "token").exists(), "HF_HOME_SEM_LOGIN não pode conter token"
+    env["HF_HOME"] = str(home)
+    env["HF_HUB_DISABLE_TELEMETRY"] = "1"
+    env["PYTHONPATH"] = str(RAIZ)
+    return env
